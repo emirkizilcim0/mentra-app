@@ -1,6 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-void main() {
+// Initialize Firebase in the main function
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  try {
+    await FirebaseFirestore.instance.collection('test').add({
+      'connected': true,
+      'timestamp': DateTime.now(),
+    });
+    print("Firestore write SUCCESS");
+  } catch (e) {
+    print("Firestore write FAILED: $e");
+  }
+
   runApp(const MyApp());
 }
 

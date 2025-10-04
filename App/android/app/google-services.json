@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "361162976405",
+    "project_id": "mentraapp-ee125",
+    "storage_bucket": "mentraapp-ee125.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:361162976405:android:cd72eb69d2b9032b05bf9c",
+        "android_client_info": {
+          "package_name": "com.example.mentra_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXt0fZo0W9lF0uxwT5W6MOE247G-_yJZA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
