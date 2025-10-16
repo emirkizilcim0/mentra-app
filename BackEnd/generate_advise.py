@@ -52,9 +52,9 @@ class PsychologistAdvisor:
         try:
             response = self.model.generate_content(
                 self.summary_prompt.format(text=combined_text,
-                                           character_type="INTP",
-                                           sign="Scorpion",
-                                           birth_map="Sun in Scorpio, Moon in Cancer, Rising in Virgo"))
+                                           character_type="INTP",                                               # It will be user inputs.
+                                           sign="Scorpion",                                                     # It will be user inputs. 
+                                           birth_map="Sun in Scorpio, Moon in Cancer, Rising in Virgo"))        # It will be user inputs.
                 
             
             sources = list()
@@ -108,17 +108,17 @@ def get_combined_summary(path: str):
     logger.info(f"Loading chunks from {path or 'default context_language.json'}...")
     chunks = load_context_chunks(path)
     
-    logger.info(f"\nGenerating combined summary of {len(chunks)} chunks...")
-    combined_summary = summarizer.give_advice(chunks)
-    logger.info(combined_summary['summary'])
+    logger.info(f"\nGenerating advise of {len(chunks)} chunks...")
+    advise = summarizer.give_advice(chunks)
+    logger.info(advise['summary'])
     
     results = {
-        "combined_summary": combined_summary,
+        "advise": advise,
         "total_chunks": len(chunks)
     }
 
-    save_json(results, "combined_summary.json")
-    logger.info(f"Saved combined summary to {get_config()['SAVE_DATA_DIR']}/combined_summary.json")
+    save_json(results, "advise.json")
+    logger.info(f"Saved advise to {get_config()['SAVE_DATA_DIR']}/advise.json")
     
     return results
 

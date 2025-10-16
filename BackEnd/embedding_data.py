@@ -220,7 +220,7 @@ def save(context_dict, chunks):
         "status": "success"
     }
 
-    save_json(result, "context_language.json")
+    save_json(result, "user_diary.json")
 
     # Force stdout to UTF-8
     sys.stdout.reconfigure(encoding="utf-8")
@@ -233,7 +233,6 @@ import argparse
 def main():
     """Main pipeline"""
     parser = argparse.ArgumentParser(description="Document Ingestion Pipeline")
-    parser.add_argument('--youtube', type=str, help='YouTube video URL to process')
     parser.add_argument('--file', type=str, help='Path to a file to process')
     args = parser.parse_args()
 
