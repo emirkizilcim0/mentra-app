@@ -41,7 +41,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String backendResponse = "No data yet.";
 
   Future<void> sendToBackend() async {
-    const backendUrl = "https://mentra.onrender.com/";
+    const backendUrl = "https://mentra-app.onrender.com";
     try {
       final response = await http.post(
         Uri.parse(backendUrl),

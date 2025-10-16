@@ -30,7 +30,7 @@ class _DocumentProcessorScreenState extends State<DocumentProcessorScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://mentra-backend.onrender.com/process-text'),
+        Uri.parse('https://mentra-app.onrender.com/process-text'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'text': textController.text}),
       );
@@ -79,7 +79,7 @@ class _DocumentProcessorScreenState extends State<DocumentProcessorScreen> {
 
     try {
       final response = await http.get(
-        Uri.parse('https://mentra-backend.onrender.com/'),
+        Uri.parse('https://mentra-app.onrender.com'),
       );
 
       if (response.statusCode == 200) {
@@ -115,7 +115,7 @@ class _DocumentProcessorScreenState extends State<DocumentProcessorScreen> {
 
     try {
       final response = await http.get(
-        Uri.parse('https://mentra-backend.onrender.com/personality-test'),
+        Uri.parse('https://mentra-app.onrender.com/personality-test'),
       );
 
       if (response.statusCode == 200) {
