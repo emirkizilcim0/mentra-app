@@ -1,8 +1,7 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'document_processor_screen.dart';
+import 'routes_manager.dart'; // Import the routes manager
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -18,13 +17,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Mentra App',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Mentra App Home'),
-      routes: {'/document-processor': (context) => DocumentProcessorScreen()},
+      initialRoute: '/login', // 👈 Start from LoginPage
+      routes: AppRoutes.routes, // Use the centralized routes
     );
   }
 }
@@ -41,7 +41,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String backendResponse = "No data yet.";
 
   Future<void> sendToBackend() async {
-    const backendUrl = "https://mentra-app.onrender.com";
+    const backendUrl = "https://mentra.onrender.com/";
     try {
       final response = await http.post(
         Uri.parse(backendUrl),
@@ -69,22 +69,17 @@ class _MyHomePageState extends State<MyHomePage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(backendResponse),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: sendToBackend,
-              child: Text("Test Backend"),
+              child: const Text("Test Backend"),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => DocumentProcessorScreen(),
-                  ),
-                );
+                Navigator.pushNamed(context, '/document-processor');
               },
-              child: Text("Open Document Processor"),
+              child: const Text("Open Document Processor"),
             ),
           ],
         ),

@@ -12,7 +12,20 @@
           "package_name": "com.example.mentra_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "361162976405-0qrllsf0e886jqvdeq3g4upss7ieiqok.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mentra_app",
+            "certificate_hash": "9b32df62680db8b6e6041e96c1ea4c6ca1e0565f"
+          }
+        },
+        {
+          "client_id": "361162976405-g6t72ghavg8atmk1k5momf69k180kaha.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAXt0fZo0W9lF0uxwT5W6MOE247G-_yJZA"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "361162976405-g6t72ghavg8atmk1k5momf69k180kaha.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "361162976405-tkg3h2j35obukoqkq4rb5qvakl2t6evb.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mentraApp"
+              }
+            }
+          ]
         }
       }
     }
