@@ -6,6 +6,7 @@ import 'home_page.dart';
 import 'login_page.dart';
 import 'signup_page.dart';
 import 'profile_page.dart';
+import 'test_page.dart';
 
 class AppRoutes {
   static final Map<String, WidgetBuilder> routes = {
@@ -14,5 +15,6 @@ class AppRoutes {
     '/login': (context) => const LoginPage(),
     '/signup': (context) => const SignupPage(),
     '/profile': (context) => const ProfilePage(),
+    '/testPage': (context) => const MbtiTestPage(),
   };
 }
