@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:mentra_app/mbti/personality_data.dart';
+import 'package:mentra_app/mbti/result_screen.dart';
+// Doğru yolları kullandığınızı varsayarak
 import 'bar_widgets/custom_header.dart';
+import 'mbti/data/questions_data.dart';
+import 'mbti/services/mbti_calculator.dart'; // Hesaplayıcıyı import et
+import 'mbti/models/question.dart';
+// Diğer gerekli import'lar...
 
-// Test Sayfası Widget'ı
 class MbtiTestPage extends StatefulWidget {
   const MbtiTestPage({super.key});
 
@@ -10,34 +16,76 @@ class MbtiTestPage extends StatefulWidget {
 }
 
 class _MbtiTestPageState extends State<MbtiTestPage> {
-  int currentQuestionIndex = 1;
-  int totalQuestions = 70;
-  // Seçilen yanıt değeri (1'den 5'e kadar)
-  int? selectedAnswer;
+  // Testin durumunu yöneten değişkenler
+  int _currentQuestionIndex = 0; // Sorular 0. indeksten başlar
+  final int _totalQuestions = mbtiQuestions.length; // Toplam soru sayısı 70
 
-  final List<String> questions = [
-    "At a party, I interact with many people, including strangers.",
-    "I often get lost in thought when I'm alone.",
-    "I make decisions based on logical reasoning.",
-  ];
+  // Seçilen yanıtın **puan değeri** (JSON'daki Choice.value)
+  int? _selectedScoreValue;
+
+  // Hesaplama mantığını tutan sınıfın örneği
+  final MbtiCalculator _calculator = MbtiCalculator();
+
+  // Yeni butonu kullanmak için, eski 'questions' listesini silebilirsiniz.
+  // final List<String> questions = [...]; // Bu listeye artık gerek yok
 
   void _goToNextQuestion() {
+    // 1. Cevap verilmiş mi kontrol et
+    if (_selectedScoreValue == null) return;
+
+    // 2. Mevcut sorunun verisini al
+    final Question currentQuestion = mbtiQuestions[_currentQuestionIndex];
+
+    // 3. Hesaplamayı yap: scoreType (E, S, T, J) ve puanı (_selectedScoreValue) gönder
+    _calculator.addScore(currentQuestion.scoreType, _selectedScoreValue!);
+
+    // 4. Durumu güncelle (setState)
     setState(() {
-      if (currentQuestionIndex < totalQuestions) {
-        currentQuestionIndex++;
-        selectedAnswer = null; // Yeni soru için seçimi sıfırla
-      } else {
-        // Test bitti. Sonuç sayfasına yönlendir.
-        // Navigator.of(context).pushReplacementNamed('/resultsPage');
-        Navigator.of(context).pop(); // Geçici olarak geri dön
-      }
+      // Soru indeksini artır
+      _currentQuestionIndex++;
+      // Seçimi sıfırla
+      _selectedScoreValue = null;
     });
+
+    // 5. Kontrol ve Geçiş
+    if (_currentQuestionIndex >= _totalQuestions) {
+      // Test bitti. Sonucu hesapla ve sonuç sayfasına git.
+      final String resultString = _calculator.calculateResult();
+      final PersonalityResult personalityResult = PersonalityResult(
+        // required fields expected by the constructor
+        type: resultString,
+        title: 'Your MBTI: $resultString',
+        description: 'This result represents your MBTI type: $resultString',
+        color: Colors.teal,
+      );
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => ResultScreen(
+            result: personalityResult, // PersonalityResult bekleniyor
+            scores: _calculator.scores,
+            onRetakeTest: () {
+              // Restart the test by replacing the result screen with a fresh test page
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const MbtiTestPage()),
+              );
+            },
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+      );
+    }
   }
+
+  // --- Widget Build Metotları ---
 
   @override
   Widget build(BuildContext context) {
+    // Testin bitip bitmediğini kontrol et
+    final bool isTestFinished = _currentQuestionIndex >= _totalQuestions;
+
     return Scaffold(
       body: Container(
+        // ... (Aynı Gradient Ayarları) ...
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -52,8 +100,11 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                // Şu an sadece ilk soruyu gösteriyoruz.
-                child: _buildQuestionCard(questions[0]),
+                child: isTestFinished
+                    ? _buildFinishCard() // Test bittiyse sonuç ekranını göster
+                    : _buildQuestionCard(
+                        mbtiQuestions[_currentQuestionIndex],
+                      ), // Aksi halde soruyu göster
               ),
             ),
             _buildNextButton(),
@@ -64,10 +115,29 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
     );
   }
 
-  // Başlık ve Geri Butonu
+  // Test bittiğinde gösterilecek geçici kart
+  Widget _buildFinishCard() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.check_circle_outline,
+            size: 80,
+            color: Color(0xFFE91E63),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Test Tamamlandı!',
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
 
-  // Soru Kartı
-  Widget _buildQuestionCard(String questionText) {
+  // Soru Kartı: Question nesnesini parametre olarak alacak şekilde güncellendi
+  Widget _buildQuestionCard(Question currentQuestion) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -87,7 +157,7 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            "Question $currentQuestionIndex/$totalQuestions",
+            "Question ${_currentQuestionIndex + 1}/$_totalQuestions", // Index + 1
             style: const TextStyle(
               fontSize: 16,
               color: Colors.grey,
@@ -95,9 +165,8 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
             ),
           ),
           const SizedBox(height: 20),
-
           Text(
-            questionText,
+            currentQuestion.question, // Gerçek soru metni
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -107,25 +176,25 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
           ),
           const SizedBox(height: 40),
 
-          // YENİ DÜZENLENMİŞ YANIT SEÇENEKLERİ
-          _buildAnswerOptions(),
-          const SizedBox(height: 20),
+          // Cevap seçeneklerini question nesnesindeki choices listesiyle oluştur
+          _buildAnswerOptions(currentQuestion.choices),
 
+          const SizedBox(height: 20),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
+            children: [
               Text(
-                "disagree", // En büyük daire (1)
+                "Strongly Disagree",
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   color: Colors.grey,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               Text(
-                "agree", // En büyük daire (5)
+                "Strongly Agree",
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   color: Colors.grey,
                   fontWeight: FontWeight.w500,
                 ),
@@ -137,41 +206,41 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
     );
   }
 
-  // 🔴 YANIT SEÇENEKLERİ DÜZENLENDİ (BOYUT VE RENK)
-  Widget _buildAnswerOptions() {
-    // 1. Daire Boyutları (En Büyük, Büyük, Küçük, Büyük, En Büyük)
-    const List<double> sizes = [50.0, 40.0, 30.0, 40.0, 50.0];
+  // YANIT SEÇENEKLERİ DÜZENLENDİ (Puanları kullanacak)
+  Widget _buildAnswerOptions(List<Choice> choices) {
+    // `Choice` nesnelerinin value'larını (puanlarını) kullanarak listeyi oluştur.
+    // JSON'da value: -2, -1, 0, 1, 2 olarak gidiyor.
 
-    // 2. Renkler (Koyu Kırmızı, Açık Kırmızı, Nötr, Açık Yeşil, Koyu Yeşil)
+    const List<double> sizes = [50.0, 40.0, 30.0, 40.0, 50.0];
     const List<Color> colors = [
-      Color(0xFFD32F2F), // Koyu Kırmızı (disagree)
-      Color(0xFFFFCDD2), // Açık Kırmızı
-      Color(0xFF989898), // Nötr/Mavi (nötr)
-      Color(0xFFC8E6C9), // Açık Yeşil
-      Color(0xFF388E3C), // Koyu Yeşil (agree)
+      Color(0xFFD32F2F), // Koyu Kırmızı (value: -2)
+      Color(0xFFFFCDD2), // Açık Kırmızı (value: -1)
+      Color(0xFF989898), // Nötr (value: 0)
+      Color(0xFFC8E6C9), // Açık Yeşil (value: 1)
+      Color(0xFF388E3C), // Koyu Yeşil (value: 2)
     ];
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: List.generate(5, (index) {
-        final int value = index + 1; // 1'den 5'e kadar değerler
-        final double size = sizes[index]; // Boyutu listeden al
-        final Color baseColor = colors[index]; // Temel rengi listeden al
+      children: choices.map((choice) {
+        final int scoreValue = choice.value; // -2'den +2'ye değer
+        // index'i 0-4 arasına getirmek için +2 eklenir (örn: -2+2=0, 2+2=4)
+        final int colorIndex = scoreValue + 2;
 
-        // Seçilen renk, temel renk veya beyaz (seçilmemişse)
-        final Color circleColor = selectedAnswer == value
-            ? baseColor
-            : Colors.white;
+        final double size = sizes[colorIndex];
+        final Color baseColor = colors[colorIndex];
 
-        // Seçilmediyse sadece gri çerçeve, seçildiyse temel rengi çerçeve
-        final Color borderColor = selectedAnswer == value
-            ? baseColor
-            : Colors.grey.shade400;
+        // selectedScoreValue, choice'ın puanına eşitse seçili demektir.
+        final bool isSelected = _selectedScoreValue == scoreValue;
+
+        final Color circleColor = isSelected ? baseColor : Colors.white;
+        final Color borderColor = isSelected ? baseColor : Colors.grey.shade400;
 
         return GestureDetector(
           onTap: () {
             setState(() {
-              selectedAnswer = value;
+              // Seçilen dairenin puan değerini kaydet
+              _selectedScoreValue = scoreValue;
             });
           },
           child: AnimatedContainer(
@@ -182,10 +251,9 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
               shape: BoxShape.circle,
               color: circleColor,
               border: Border.all(color: borderColor, width: 2),
-              boxShadow: selectedAnswer == value
+              boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        // Seçilen daireye temel rengin hafif bir gölgesi
                         color: baseColor.withOpacity(0.4),
                         blurRadius: 8,
                         spreadRadius: 2,
@@ -195,20 +263,21 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
             ),
           ),
         );
-      }),
+      }).toList(),
     );
   }
 
   // İLERİ Butonu
   Widget _buildNextButton() {
-    final bool isAnswerSelected = selectedAnswer != null;
+    // _selectedScoreValue null değilse buton aktif olur
+    final bool isAnswerSelected = _selectedScoreValue != null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
       child: Container(
         height: 55,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          // Gradient renkler (Pembe tonları)
           gradient: isAnswerSelected
               ? const LinearGradient(
                   colors: [Color(0xFFE91E63), Color(0xFFF06292)],
@@ -221,11 +290,14 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
+            // Cevap seçilmişse _goToNextQuestion'ı çağır.
             onTap: isAnswerSelected ? _goToNextQuestion : null,
             borderRadius: BorderRadius.circular(30),
             child: Center(
               child: Text(
-                currentQuestionIndex < totalQuestions ? "NEXT" : "FINISH",
+                _currentQuestionIndex < _totalQuestions - 1
+                    ? "NEXT"
+                    : "FINISH", // Son soru için "FINISH"
                 style: TextStyle(
                   color: isAnswerSelected ? Colors.white : Colors.black54,
                   fontWeight: FontWeight.bold,
