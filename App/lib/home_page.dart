@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'profile_page.dart';
+import 'routes_manager.dart';
+import 'chat_page.dart'; // Need to make it all in routes_manager.dart. It is hard-coded right now.
+import 'profile_page.dart'; // Need to make it all in routes_manager.dart. It is hard-coded right now.
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -31,7 +33,14 @@ class HomePage extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ChatPage(),
+                        ),
+                      );
+                    },
                     icon: const Icon(
                       Icons.chat_bubble_outline,
                       color: Colors.black87,

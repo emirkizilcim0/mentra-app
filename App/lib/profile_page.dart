@@ -1,220 +1,244 @@
 import 'package:flutter/material.dart';
-import 'bar_widgets/custom_header.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'home_page.dart'; // for navigation back
 
-// Ana Sayfa Widget'ı
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Sayfanın ana rengi için bir Color tanımlayalım
-    // (Ekran görüntüsündeki açık mavi/beyaz gradyanını taklit etmek için)
-    const Color lightBackgroundColor = Color(0xFFE0F7FA);
-
     return Scaffold(
-      // Sayfanın arka planına gradyan uygulamak için Container kullanıyoruz
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            // Ekran görüntüsündeki açık pastel tonlarını taklit eden renkler
-            colors: [
-              Color(0xFFE0F7FA), // Çok açık mavi
-              Color(0xFFFFFFFF), // Beyaz
-            ],
-          ),
-        ),
+      backgroundColor: const Color(0xFFE8F4F9),
+      body: SafeArea(
         child: Column(
           children: [
-            // Özel AppBar yerine, sayfanın içeriğinin bir parçası olarak başlık kısmı
-            const CustomHeader(),
-
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 30),
-
-                    // 1. Profil Fotoğrafı
-                    _buildProfileAvatar(),
-
-                    const SizedBox(height: 40),
-
-                    // 2. Bilgi Alanları Listesi
-                    // Not: TextField'ları kullanmaya devam ediyoruz, ancak daha önceki _buildInfoTile metodunu kullanabilirsiniz.
-                    const TextField(
-                      decoration: InputDecoration(labelText: 'Name'),
+            // 🩶 Top Bar (same as HomePage)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Mentra",
+                    style: GoogleFonts.pacifico(
+                      fontSize: 28,
+                      color: Colors.black87,
                     ),
-                    const SizedBox(height: 15),
-                    const TextField(
-                      decoration: InputDecoration(labelText: 'Character Type'),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.chat_bubble_outline,
+                      color: Colors.black87,
+                      size: 26,
                     ),
-                    const SizedBox(height: 15),
-                    const TextField(
-                      decoration: InputDecoration(labelText: 'Sign'),
+                  ),
+                ],
+              ),
+            ),
+
+            // 👤 Profile Card
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.black12, width: 1.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Avatar
+                  Container(
+                    padding: const EdgeInsets.all(5.0),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFFF48FB1),
+                        width: 3.0,
+                      ),
                     ),
-                    const SizedBox(height: 15),
-                    // 3. MBTI ve Buton
-                    // Alt kısım için boşluk
-                    _buildMbtiTile(context), // **CONTEXT EKLEMESİ YAPILDI**
+                    child: const CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Color(0xFFF8BBD0),
+                      child: Icon(Icons.person, size: 60, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Your Profile",
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
 
-                    const SizedBox(height: 40),
-                    const Text('Birth Chart'),
+                  // Info fields (Name, Character Type, Sign)
+                  _buildInfoField(label: "Name", hint: "Enter your name"),
+                  const SizedBox(height: 12),
+                  _buildInfoField(
+                    label: "Character Type",
+                    hint: "e.g., Adventurer",
+                  ),
+                  const SizedBox(height: 12),
+                  _buildInfoField(label: "Sign", hint: "e.g., Taurus"),
 
-                    const SizedBox(height: 15),
-                  ],
+                  const SizedBox(height: 20),
+
+                  // MBTI Test Card
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9DDE2),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.black26, width: 1),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "MBTI Test",
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF48FB1),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).pushNamed('/testPage');
+                          },
+                          child: const Text(
+                            "Take Again",
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Birth Chart Section
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Birth Chart",
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Text(
+                      "Your birth chart information will appear here.",
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const Spacer(),
+
+            // ⚙️ Bottom Navigation Bar (same as HomePage)
+            Container(
+              height: 65,
+              decoration: const BoxDecoration(
+                color: Color(0xFFD0E8EF),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-
-      // En alttaki gezinme çubuğu
-      bottomNavigationBar: _buildBottomNavBar(),
-    );
-  }
-
-  // Profil Fotoğrafı Widget'ı
-  Widget _buildProfileAvatar() {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(5.0), // Dış çerçeve boşluğu
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFFF48FB1), // Pembe çerçeve rengi
-            width: 3.0,
-          ),
-        ),
-        child: const CircleAvatar(
-          radius: 50,
-          backgroundColor: Color(0xFFF8BBD0), // Açık pembe arka plan
-          child: Icon(Icons.person, size: 60, color: Colors.white),
-        ),
-      ),
-    );
-  }
-
-  // MBTI Alanı ve Buton Widget'ı
-  // **CONTEXT PARAMETRESİ EKLENDİ**
-  Widget _buildMbtiTile(BuildContext context) {
-    return Container(
-      height: 55,
-      padding: const EdgeInsets.only(left: 15, right: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            "MBTI test",
-            style: TextStyle(fontSize: 16, color: Colors.black54),
-          ),
-          // Take Again Butonu
-          _buildTakeAgainButton(context), // **CONTEXT BUTONA İLETİLDİ**
-        ],
-      ),
-    );
-  }
-
-  // Take Again Butonu Widget'ı
-  // **CONTEXT PARAMETRESİ EKLENDİ**
-  Widget _buildTakeAgainButton(BuildContext context) {
-    return Container(
-      width: 120, // Sabit genişlik
-      height: 40, // Sabit yükseklik
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        // Ekran görüntüsündeki mor/pembe gradyanı
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFFE91E63), // Koyu pembe
-            Color(0xFFF06292), // Açık pembe
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.pink.withOpacity(0.5),
-            spreadRadius: 1,
-            blurRadius: 5,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent, // Material'ın kendi rengini şeffaf yapıyoruz
-        child: InkWell(
-          onTap: () {
-            // 🚀 BURASI DÜZELTİLDİ: Tanımlı rota adı kullanılarak geçiş yapılıyor.
-            Navigator.of(context).pushNamed('/testPage');
-          },
-          borderRadius: BorderRadius.circular(20),
-          child: const Center(
-            child: Text(
-              "take again",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.home_outlined,
+                      size: 28,
+                      color: Colors.black,
+                    ),
+                    onPressed: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HomePage(),
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.person,
+                      size: 28,
+                      color: Colors.black,
+                    ),
+                    onPressed: () {},
+                  ),
+                ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  // En Alttaki Gezinme Çubuğu (Bottom Navigation Bar)
-  Widget _buildBottomNavBar() {
-    return Container(
-      height: 60,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF0F5F5), // Açık gri/mavi tonu
-        border: Border(top: BorderSide(color: Color(0xFFB0BEC5), width: 0.5)),
+  // 🧩 Helper Widget: Styled Info Field
+  Widget _buildInfoField({required String label, required String hint}) {
+    return TextField(
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: GoogleFonts.poppins(color: Colors.black54, fontSize: 14),
+        hintStyle: GoogleFonts.poppins(color: Colors.black38, fontSize: 13),
+        filled: true,
+        fillColor: const Color(0xFFF9FBFC),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Colors.black12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Color(0xFFB3E5FC), width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          // Ana Sayfa İkonu
-          _buildNavBarItem(icon: Icons.home_outlined, isActive: true),
-          // Profil İkonu
-          _buildNavBarItem(icon: Icons.person_outline, isActive: false),
-        ],
-      ),
-    );
-  }
-
-  // Navigasyon Çubuğu Öğesi
-  Widget _buildNavBarItem({required IconData icon, required bool isActive}) {
-    // İkonun üzerine yuvarlak bir halka (ring) ekliyoruz
-    return Container(
-      padding: const EdgeInsets.all(5.0),
-      decoration: isActive
-          ? BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.black87,
-                width: 2,
-              ), // Halka rengi
-            )
-          : null,
-      child: Icon(icon, size: 30, color: Colors.black87),
     );
   }
 }
