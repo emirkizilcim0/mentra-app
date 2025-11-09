@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:mentra_app/chat_page.dart';
+import 'package:mentra_app/diary_write_page.dart';
+import 'package:mentra_app/diary_detail_page.dart';
 import 'splash_page.dart';
 import 'home_page.dart';
 import 'login_page.dart';
@@ -21,6 +23,11 @@ class AppRoutes {
     '/profile': (context) => const ProfilePage(),
     '/testPage': (context) => const MbtiTestPage(),
     '/chatPage': (context) => const ChatPage(),
+    '/diaryWrite': (context) => const DiaryWritePage(),
+    '/diaryDetail': (context) {
+      final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+      return DiaryDetailPage(diaryEntry: args);
+    },
     '/infoPage': (context) => const InfoPage(),
     '/resultPage': (context) => ResultScreen(
       result: PersonalityResult(

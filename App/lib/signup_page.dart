@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'signup_details_page.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -38,22 +39,16 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
-    setState(() => isLoading = true);
-
-    User? user = await _authService.signUpWithEmail(email, password);
-
-    setState(() => isLoading = false);
-
-    if (user != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Account created successfully!")),
-      );
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Signup failed. Try again.")),
-      );
-    }
+    // İlk adım: e-posta ve şifre doğrulandıktan sonra ikinci adım sayfasına yönlendirilir.
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SignupDetailsPage(
+          email: email,
+          password: password,
+        ),
+      ),
+    );
   }
 
   @override

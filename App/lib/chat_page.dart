@@ -2,9 +2,71 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
+import 'diary_write_page.dart';
+import 'diary_detail_page.dart';
+import 'services/diary_service.dart';
 
-class ChatPage extends StatelessWidget {
+class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
+
+  @override
+  State<ChatPage> createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<ChatPage> {
+  List<Map<String, dynamic>> diaryEntries = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDiaryEntries();
+  }
+
+  Future<void> _loadDiaryEntries() async {
+    try {
+      final entries = await DiaryService.getDiaryEntries();
+      setState(() {
+        diaryEntries = entries;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading diary entries: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _openDiaryWritePage() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const DiaryWritePage(),
+      ),
+    );
+
+    if (result != null && result is Map<String, dynamic>) {
+      try {
+        await DiaryService.saveDiaryEntry(result);
+        _loadDiaryEntries();
+      } catch (e) {
+        print('Error saving diary entry: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error saving diary entry')),
+        );
+      }
+    }
+  }
+
+  void _openDiaryDetail(Map<String, dynamic> entry) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DiaryDetailPage(diaryEntry: entry),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,20 +106,23 @@ class ChatPage extends StatelessWidget {
                 color: Colors.black87,
                 borderRadius: BorderRadius.circular(40),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Write dairy",
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+              child: InkWell(
+                onTap: _openDiaryWritePage,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Write dairy",
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Icon(Icons.edit, color: Colors.white),
-                ],
+                    const SizedBox(width: 10),
+                    const Icon(Icons.edit, color: Colors.white),
+                  ],
+                ),
               ),
             ),
 
@@ -86,36 +151,42 @@ class ChatPage extends StatelessWidget {
                   horizontal: 25,
                   vertical: 10,
                 ),
-                child: Column(
-                  children: [
-                    for (final date in [
-                      "12.10.2025",
-                      "11.10.2025",
-                      "10.10.2025",
-                      "09.10.2025",
-                      "08.10.2025",
-                    ])
-                      Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                          horizontal: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Text(
-                          date,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            color: Colors.black87,
+                child: isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : diaryEntries.isEmpty
+                        ? const Text(
+                            "No diary entries yet. Start writing!",
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
+                          )
+                        : Column(
+                            children: diaryEntries.map((entry) {
+                              return Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: InkWell(
+                                  onTap: () => _openDiaryDetail(entry),
+                                  child: Text(
+                                    entry['formattedDate'] ?? 'No date',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 15,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
-                        ),
-                      ),
-                  ],
-                ),
               ),
             ),
 
