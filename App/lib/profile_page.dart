@@ -1,9 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'home_page.dart'; // for navigation back
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
+import 'home_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController signController = TextEditingController();
+
+  String mbtiTitle = "No result yet";
+  String mbtiDesc = "";
+  String zodiac = "";
+  String birthDate = "";
+
+  @override
+  void initState() {
+    super.initState();
+    loadProfileData();
+  }
+
+  Future<void> loadProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      // Combine first + last name
+      final firstName = prefs.getString("profile_firstName") ?? "";
+      final lastName = prefs.getString("profile_lastName") ?? "";
+      nameController.text = "$firstName $lastName";
+
+      // Zodiac / Sign
+      zodiac = prefs.getString("profile_zodiac") ?? "";
+      // Birth date
+      String birthDateIso = prefs.getString("profile_birthDateISO") ?? "";
+      if (birthDateIso.isNotEmpty) {
+        try {
+          DateTime birth = DateTime.parse(birthDateIso);
+          birthDate = DateFormat(
+            'd MMMM yyyy',
+          ).format(birth); // 25 January 2004
+        } catch (e) {
+          birthDate = birthDateIso; // fallback
+        }
+      } else {
+        birthDate = "";
+      }
+      signController.text = zodiac;
+
+      // MBTI result
+      mbtiTitle = prefs.getString("profile_mbtiTitle") ?? "No result yet";
+      mbtiDesc = prefs.getString("profile_mbtiDesc") ?? "";
+    });
+  }
+
+  Future<void> saveProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Save name (split first + last if you want)
+    final fullName = nameController.text.split(" ");
+    if (fullName.isNotEmpty) {
+      await prefs.setString("profile_firstName", fullName[0]);
+      await prefs.setString(
+        "profile_lastName",
+        fullName.length > 1 ? fullName[1] : "",
+      );
+    }
+    await prefs.setString("profile_zodiac", signController.text);
+    // Optional: update birthDate if you add an editable field
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +81,7 @@ class ProfilePage extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // 🩶 Top Bar (same as HomePage)
+            // ---------------- TOP BAR ----------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Row(
@@ -37,141 +106,146 @@ class ProfilePage extends StatelessWidget {
               ),
             ),
 
-            // 👤 Profile Card
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.black12, width: 1.5),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Avatar
-                  Container(
-                    padding: const EdgeInsets.all(5.0),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFF48FB1),
-                        width: 3.0,
+            // ---------------- PROFILE CARD ----------------
+            Expanded(
+              child: SingleChildScrollView(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black12, width: 1.5),
+                  ),
+                  child: Column(
+                    children: [
+                      // AVATAR
+                      Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFFF48FB1),
+                            width: 3,
+                          ),
+                        ),
+                        child: const CircleAvatar(
+                          radius: 50,
+                          backgroundColor: Color(0xFFF8BBD0),
+                          child: Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: const CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Color(0xFFF8BBD0),
-                      child: Icon(Icons.person, size: 60, color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    "Your Profile",
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 18,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
+                      const SizedBox(height: 20),
 
-                  // Info fields (Name, Character Type, Sign)
-                  _buildInfoField(label: "Name", hint: "Enter your name"),
-                  const SizedBox(height: 12),
-                  _buildInfoField(
-                    label: "Character Type",
-                    hint: "e.g., Adventurer",
-                  ),
-                  const SizedBox(height: 12),
-                  _buildInfoField(label: "Sign", hint: "e.g., Taurus"),
+                      Text(
+                        "Your Profile",
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
 
-                  const SizedBox(height: 20),
+                      // ---------------- FIELDS ----------------
+                      _buildField("Name", nameController),
+                      const SizedBox(height: 12),
 
-                  // MBTI Test Card
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF9DDE2),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.black26, width: 1),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "MBTI Test",
+                      _buildField("Zodiac / Sign", signController),
+                      const SizedBox(height: 12),
+
+                      _buildField(
+                        "Birth Date",
+                        TextEditingController()..text = birthDate,
+                      ),
+                      const SizedBox(height: 20),
+
+                      // ---------------- MBTI RESULT ----------------
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF9DDE2),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "$mbtiTitle",
+                              style: GoogleFonts.poppins(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              mbtiDesc,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                color: Colors.black54,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.pushNamed(context, "/testPage");
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFF48FB1),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                              ),
+                              child: const Text("Retake"),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 25),
+
+                      // ---------------- BIRTH CHART ----------------
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Birth Chart",
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                            color: Colors.black87,
+                            fontSize: 16,
                           ),
                         ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFF48FB1),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 8,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          onPressed: () {
-                            Navigator.of(context).pushNamed('/testPage');
-                          },
-                          child: const Text(
-                            "Take Again",
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: Text(
+                          "Your birth chart information will appear here.",
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: Colors.black54,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Birth Chart Section
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Birth Chart",
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                        color: Colors.black87,
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.black12),
-                    ),
-                    child: Text(
-                      "Your birth chart information will appear here.",
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
 
-            const Spacer(),
-
-            // ⚙️ Bottom Navigation Bar (same as HomePage)
+            // ---------------- BOTTOM NAV ----------------
             Container(
               height: 65,
               decoration: const BoxDecoration(
@@ -185,11 +259,7 @@ class ProfilePage extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   IconButton(
-                    icon: const Icon(
-                      Icons.home_outlined,
-                      size: 28,
-                      color: Colors.black,
-                    ),
+                    icon: const Icon(Icons.home_outlined, size: 28),
                     onPressed: () {
                       Navigator.pushReplacement(
                         context,
@@ -199,14 +269,7 @@ class ProfilePage extends StatelessWidget {
                       );
                     },
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.person,
-                      size: 28,
-                      color: Colors.black,
-                    ),
-                    onPressed: () {},
-                  ),
+                  const Icon(Icons.person, size: 28),
                 ],
               ),
             ),
@@ -216,28 +279,14 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // 🧩 Helper Widget: Styled Info Field
-  Widget _buildInfoField({required String label, required String hint}) {
+  Widget _buildField(String label, TextEditingController c) {
     return TextField(
+      controller: c,
       decoration: InputDecoration(
         labelText: label,
-        hintText: hint,
-        labelStyle: GoogleFonts.poppins(color: Colors.black54, fontSize: 14),
-        hintStyle: GoogleFonts.poppins(color: Colors.black38, fontSize: 13),
         filled: true,
         fillColor: const Color(0xFFF9FBFC),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: Colors.black12),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: Color(0xFFB3E5FC), width: 2),
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

@@ -25,7 +25,8 @@ class AppRoutes {
     '/chatPage': (context) => const ChatPage(),
     '/diaryWrite': (context) => const DiaryWritePage(),
     '/diaryDetail': (context) {
-      final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+      final args =
+          ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
       return DiaryDetailPage(diaryEntry: args);
     },
     '/infoPage': (context) => const InfoPage(),

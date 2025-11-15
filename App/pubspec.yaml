@@ -48,12 +48,13 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
   flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
@@ -84,6 +85,21 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
 # example:
+flutter_native_splash:
+  color: "#ffffff"         # background color
+  image: assets/mentra_logo.jpg  # your logo
+  android: true
+  ios: true
+  android_12:
+    image: assets/mentra_logo.jpg
+    icon_background_color: "#ffffff"
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/mentra_logo.jpg"
+
+
 fonts:
   - family: Schyler
     fonts:

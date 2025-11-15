@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../mbti/personality_data.dart'; // Yeni oluşturulan dosya yolu
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ResultScreen extends StatelessWidget {
   final PersonalityResult result;
@@ -69,7 +70,12 @@ class ResultScreen extends StatelessWidget {
               const SizedBox(height: 50),
               // Testi Tekrar Çöz Butonu
               ElevatedButton.icon(
-                onPressed: () {
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString("profile_mbti", result.type);
+                  await prefs.setString("profile_mbtiTitle", result.title);
+                  await prefs.setString("profile_mbtiDesc", result.description);
+
                   Navigator.pushNamed(context, "/home");
                 },
                 icon: const Icon(Icons.refresh),

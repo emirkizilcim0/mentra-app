@@ -99,10 +99,7 @@ class _DiaryWritePageState extends State<DiaryWritePage> {
               const SizedBox(height: 8),
               Text(
                 DateFormat('dd MMMM yyyy, HH:mm').format(DateTime.now()),
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
               ),
               const SizedBox(height: 24),
               Expanded(

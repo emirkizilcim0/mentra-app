@@ -3,11 +3,36 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 
+String getZodiac(DateTime date) {
+  int day = date.day;
+  int month = date.month;
+
+  if ((month == 3 && day >= 21) || (month == 4 && day <= 19)) return "Aries";
+  if ((month == 4 && day >= 20) || (month == 5 && day <= 20)) return "Taurus";
+  if ((month == 5 && day >= 21) || (month == 6 && day <= 20)) return "Gemini";
+  if ((month == 6 && day >= 21) || (month == 7 && day <= 22)) return "Cancer";
+  if ((month == 7 && day >= 23) || (month == 8 && day <= 22)) return "Leo";
+  if ((month == 8 && day >= 23) || (month == 9 && day <= 22)) return "Virgo";
+  if ((month == 9 && day >= 23) || (month == 10 && day <= 22)) return "Libra";
+  if ((month == 10 && day >= 23) || (month == 11 && day <= 21))
+    return "Scorpio";
+  if ((month == 11 && day >= 22) || (month == 12 && day <= 21))
+    return "Sagittarius";
+  if ((month == 12 && day >= 22) || (month == 1 && day <= 19))
+    return "Capricorn";
+  if ((month == 1 && day >= 20) || (month == 2 && day <= 18)) return "Aquarius";
+  return "Pisces";
+}
+
 class SignupDetailsPage extends StatefulWidget {
   final String email;
   final String password;
 
-  const SignupDetailsPage({super.key, required this.email, required this.password});
+  const SignupDetailsPage({
+    super.key,
+    required this.email,
+    required this.password,
+  });
 
   @override
   State<SignupDetailsPage> createState() => _SignupDetailsPageState();
@@ -40,16 +65,19 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
     final bd = birthDate;
 
     if (firstName.isEmpty || lastName.isEmpty || bd == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please fill all fields.')));
       return;
     }
 
     setState(() => isLoading = true);
     try {
       // Hesap oluşturma (Firebase Auth)
-      final user = await _authService.signUpWithEmail(widget.email, widget.password);
+      final user = await _authService.signUpWithEmail(
+        widget.email,
+        widget.password,
+      );
       if (user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Signup failed. Try again.')),
@@ -59,7 +87,9 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
       }
 
       // Profil bilgilerini yerelde sakla (ileride Firestore’a yazmak için hazır)
+      final zodiac = getZodiac(bd);
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('profile_zodiac', zodiac);
       await prefs.setString('profile_firstName', firstName);
       await prefs.setString('profile_lastName', lastName);
       await prefs.setString('profile_birthDateISO', bd.toIso8601String());
@@ -68,11 +98,11 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Account created successfully!')),
       );
-      Navigator.pushReplacementNamed(context, '/home');
+      Navigator.pushReplacementNamed(context, '/testPage');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -86,7 +116,10 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
       final day = d.day.toString().padLeft(2, '0');
       return '$y-$m-$day';
     }
-    final bdText = birthDate == null ? 'Select your birth date' : _formatDate(birthDate!);
+
+    final bdText = birthDate == null
+        ? 'Select your birth date'
+        : _formatDate(birthDate!);
 
     return Scaffold(
       body: Container(
@@ -125,7 +158,11 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: const [
-                    BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4)),
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 8,
+                      offset: Offset(0, 4),
+                    ),
                   ],
                 ),
                 child: Column(
@@ -158,9 +195,15 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
                           children: [
                             Text(
                               bdText,
-                              style: GoogleFonts.poppins(fontSize: 14, color: Colors.black87),
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: Colors.black87,
+                              ),
                             ),
-                            const Icon(Icons.calendar_today, color: Colors.black54),
+                            const Icon(
+                              Icons.calendar_today,
+                              color: Colors.black54,
+                            ),
                           ],
                         ),
                       ),
@@ -173,17 +216,26 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
                         onPressed: isLoading ? null : _completeSignup,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFD68DA8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         child: isLoading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : Text(
                                 'Complete Sign Up',
-                                style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                ),
                               ),
                       ),
                     ),

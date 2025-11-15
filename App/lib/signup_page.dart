@@ -43,10 +43,7 @@ class _SignupPageState extends State<SignupPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SignupDetailsPage(
-          email: email,
-          password: password,
-        ),
+        builder: (_) => SignupDetailsPage(email: email, password: password),
       ),
     );
   }

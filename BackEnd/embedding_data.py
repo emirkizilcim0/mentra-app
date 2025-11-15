@@ -101,34 +101,6 @@ def smart_postprocess_document(doc):
     return [doc]
 
 
-import magic
-import mimetypes  # Add this at the top with other imports
-
-def detect_file_type(filepath):
-    """Improved file type detection with fallbacks"""
-    try:
-        # Protection from malwares
-        mime = magic.from_file(filepath, mime=True)
-        if mime != 'application/octet-stream':
-            return mime
-        
-        # Fallback to mimetypes
-        mime, _ = mimetypes.guess_type(filepath)
-        if mime:
-            return mime
-            
-        # Check file extension as last resort
-        if filepath.lower().endswith('.pdf'):
-            return 'application/pdf'
-            
-        return None
-    except:
-        # If all fails, check extension
-        if filepath.lower().endswith('.pdf'):
-            return 'application/pdf'
-        return None
-
-
 from pathlib import Path
 
 LOADER_MAPPING = {"text/plain": TextLoader}
@@ -144,7 +116,7 @@ def load_documents(args):
             return []
 
         filename = filepath.name
-        mime_type = detect_file_type(str(filepath))
+        mime_type = str(filepath)
         loader_class = LOADER_MAPPING.get(mime_type)
 
         if not loader_class:

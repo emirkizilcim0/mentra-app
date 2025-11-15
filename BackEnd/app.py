@@ -1,22 +1,46 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-app = Flask(__name__)
-CORS(app)  # allow Flutter to call this API
+app = FastAPI()
 
-@app.route('/')
-def home():
-    return jsonify({"message": "Backend is running!"})
+# Allow Flutter to call this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can restrict this later to your Flutter app's domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.route('/analyze', methods=['POST'])
-def analyze():
-    data = request.get_json()
-    name = data.get('name', 'Unknown')
-    score = len(name) * 7  # just a test calculation
-    return jsonify({
+@app.get("/")
+async def home():
+    return {"message": "Backend is running!"}
+
+# Define expected POST body using Pydantic model
+class AnalyzeRequest(BaseModel):
+    name: str = "Unknown"
+
+@app.post("/analyze")
+async def analyze(data: AnalyzeRequest):
+    name = data.name
+    score = len(name) * 7  # same test calculation
+    return {
         "message": f"Hello {name}, your analysis score is {score}",
         "status": "success"
-    })
+    }
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+
+"""
+This is a simple FastAPI backend that listens for POST requests at the /analyze endpoint.
+Uvicorn is ASGI server, can handle thousands of requests concurrently.
+Need to run this command for the server to start:
+
+uvicorn main:app --host 0.0.0.0 --port 5000
+
+We should write this instead of hardcoding part 5000 because of render.com:
+
+uvicorn main:app --host 0.0.0.0 --port $PORT
+
+
+"""

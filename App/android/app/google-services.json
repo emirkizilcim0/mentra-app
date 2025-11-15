@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "361162976405-eik9pqqa6bfpa0h9bkogntoi1abo961i.apps.googleusercontent.com",
+          "client_id": "361162976405-0qrllsf0e886jqvdeq3g4upss7ieiqok.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.mentra_app",
-            "certificate_hash": "a178bfa5ad7bc060e971af12002fb27a154b149c"
+            "certificate_hash": "9b32df62680db8b6e6041e96c1ea4c6ca1e0565f"
           }
         },
         {

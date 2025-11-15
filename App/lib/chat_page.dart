@@ -41,9 +41,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _openDiaryWritePage() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const DiaryWritePage(),
-      ),
+      MaterialPageRoute(builder: (context) => const DiaryWritePage()),
     );
 
     if (result != null && result is Map<String, dynamic>) {
@@ -154,39 +152,36 @@ class _ChatPageState extends State<ChatPage> {
                 child: isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : diaryEntries.isEmpty
-                        ? const Text(
-                            "No diary entries yet. Start writing!",
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 14,
+                    ? const Text(
+                        "No diary entries yet. Start writing!",
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                      )
+                    : Column(
+                        children: diaryEntries.map((entry) {
+                          return Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                              horizontal: 16,
                             ),
-                          )
-                        : Column(
-                            children: diaryEntries.map((entry) {
-                              return Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.symmetric(vertical: 6),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                  horizontal: 16,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: InkWell(
+                              onTap: () => _openDiaryDetail(entry),
+                              child: Text(
+                                entry['formattedDate'] ?? 'No date',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  color: Colors.black87,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                                child: InkWell(
-                                  onTap: () => _openDiaryDetail(entry),
-                                  child: Text(
-                                    entry['formattedDate'] ?? 'No date',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 15,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
               ),
             ),
 
