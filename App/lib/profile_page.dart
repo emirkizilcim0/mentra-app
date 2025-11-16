@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'home_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -20,6 +21,10 @@ class _ProfilePageState extends State<ProfilePage> {
   String zodiac = "";
   String birthDate = "";
 
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? "unknown";
+
+  String _key(String key) => "${key}_$_uid"; // namespaced key
+
   @override
   void initState() {
     super.initState();
@@ -31,47 +36,48 @@ class _ProfilePageState extends State<ProfilePage> {
 
     setState(() {
       // Combine first + last name
-      final firstName = prefs.getString("profile_firstName") ?? "";
-      final lastName = prefs.getString("profile_lastName") ?? "";
+      final firstName = prefs.getString(_key("profile_firstName")) ?? "";
+      final lastName = prefs.getString(_key("profile_lastName")) ?? "";
       nameController.text = "$firstName $lastName";
 
       // Zodiac / Sign
-      zodiac = prefs.getString("profile_zodiac") ?? "";
+      zodiac = prefs.getString(_key("profile_zodiac")) ?? "";
+      signController.text = zodiac;
+
       // Birth date
-      String birthDateIso = prefs.getString("profile_birthDateISO") ?? "";
+      String birthDateIso = prefs.getString(_key("profile_birthDateISO")) ?? "";
       if (birthDateIso.isNotEmpty) {
         try {
           DateTime birth = DateTime.parse(birthDateIso);
-          birthDate = DateFormat(
-            'd MMMM yyyy',
-          ).format(birth); // 25 January 2004
+          birthDate = DateFormat('d MMMM yyyy').format(birth);
         } catch (e) {
           birthDate = birthDateIso; // fallback
         }
       } else {
         birthDate = "";
       }
-      signController.text = zodiac;
 
       // MBTI result
-      mbtiTitle = prefs.getString("profile_mbtiTitle") ?? "No result yet";
-      mbtiDesc = prefs.getString("profile_mbtiDesc") ?? "";
+      mbtiTitle = prefs.getString(_key("profile_mbtiTitle")) ?? "No result yet";
+      mbtiDesc = prefs.getString(_key("profile_mbtiDesc")) ?? "";
     });
   }
 
   Future<void> saveProfileData() async {
     final prefs = await SharedPreferences.getInstance();
-    // Save name (split first + last if you want)
+
+    // Save name
     final fullName = nameController.text.split(" ");
     if (fullName.isNotEmpty) {
-      await prefs.setString("profile_firstName", fullName[0]);
+      await prefs.setString(_key("profile_firstName"), fullName[0]);
       await prefs.setString(
-        "profile_lastName",
+        _key("profile_lastName"),
         fullName.length > 1 ? fullName[1] : "",
       );
     }
-    await prefs.setString("profile_zodiac", signController.text);
-    // Optional: update birthDate if you add an editable field
+
+    await prefs.setString(_key("profile_zodiac"), signController.text);
+    // Optional: save birthDateISO if user edits birth date
   }
 
   @override
@@ -92,14 +98,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     style: GoogleFonts.pacifico(
                       fontSize: 28,
                       color: Colors.black87,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(
-                      Icons.chat_bubble_outline,
-                      color: Colors.black87,
-                      size: 26,
                     ),
                   ),
                 ],
@@ -143,7 +141,6 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-
                       Text(
                         "Your Profile",
                         style: GoogleFonts.poppins(
@@ -156,10 +153,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       // ---------------- FIELDS ----------------
                       _buildField("Name", nameController),
                       const SizedBox(height: 12),
-
                       _buildField("Zodiac / Sign", signController),
                       const SizedBox(height: 12),
-
                       _buildField(
                         "Birth Date",
                         TextEditingController()..text = birthDate,
@@ -236,6 +231,37 @@ class _ProfilePageState extends State<ProfilePage> {
                           style: GoogleFonts.poppins(
                             fontSize: 13,
                             color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // ---------------- LOGOUT BUTTON ----------------
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            await FirebaseAuth.instance.signOut();
+                            if (!mounted) return;
+                            Navigator.pushReplacementNamed(
+                              context,
+                              '/login',
+                            ); // make sure /login route exists
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFD68DA8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            'Log Out',
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
                       ),

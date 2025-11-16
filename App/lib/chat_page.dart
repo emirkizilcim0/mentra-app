@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
 import 'diary_write_page.dart';
@@ -23,6 +24,7 @@ class _ChatPageState extends State<ChatPage> {
     _loadDiaryEntries();
   }
 
+  // Load diaries only for current logged-in user
   Future<void> _loadDiaryEntries() async {
     try {
       final entries = await DiaryService.getDiaryEntries();
@@ -86,11 +88,6 @@ class _ChatPageState extends State<ChatPage> {
                       color: Colors.black87,
                     ),
                   ),
-                  const Icon(
-                    Icons.chat_bubble_outline,
-                    color: Colors.black87,
-                    size: 26,
-                  ),
                 ],
               ),
             ),
@@ -110,7 +107,7 @@ class _ChatPageState extends State<ChatPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Write dairy",
+                      "Write diary",
                       style: GoogleFonts.poppins(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -130,7 +127,7 @@ class _ChatPageState extends State<ChatPage> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  "Your previous dairies",
+                  "Your previous diaries",
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -190,10 +187,7 @@ class _ChatPageState extends State<ChatPage> {
               height: 65,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    Color(0xFFCAE4EB), // pastel blue gradient start
-                    Color(0xFFE8F4F9), // lighter fade
-                  ],
+                  colors: [Color(0xFFCAE4EB), Color(0xFFE8F4F9)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),

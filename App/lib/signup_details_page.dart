@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_service.dart';
 
 String getZodiac(DateTime date) {
@@ -45,6 +46,9 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
   DateTime? birthDate;
   bool isLoading = false;
 
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? "unknown";
+  String _key(String key) => "${key}_$_uid"; // namespaced key
+
   Future<void> _pickBirthDate() async {
     final now = DateTime.now();
     final initial = birthDate ?? DateTime(now.year - 18, now.month, now.day);
@@ -86,13 +90,13 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
         return;
       }
 
-      // Profil bilgilerini yerelde sakla (ileride Firestore’a yazmak için hazır)
+      // Profil bilgilerini yerelde sakla (user-specific)
       final zodiac = getZodiac(bd);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('profile_zodiac', zodiac);
-      await prefs.setString('profile_firstName', firstName);
-      await prefs.setString('profile_lastName', lastName);
-      await prefs.setString('profile_birthDateISO', bd.toIso8601String());
+      await prefs.setString(_key('profile_zodiac'), zodiac);
+      await prefs.setString(_key('profile_firstName'), firstName);
+      await prefs.setString(_key('profile_lastName'), lastName);
+      await prefs.setString(_key('profile_birthDateISO'), bd.toIso8601String());
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

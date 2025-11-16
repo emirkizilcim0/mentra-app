@@ -10,7 +10,9 @@ class FirebaseDiaryService {
   static String? get _userId => _auth.currentUser?.uid;
 
   // Firebase'e günlük ekleme
-  static Future<void> addDiaryToFirebase(Map<String, dynamic> diaryEntry) async {
+  static Future<void> addDiaryToFirebase(
+    Map<String, dynamic> diaryEntry,
+  ) async {
     try {
       if (_userId == null) {
         throw Exception('User not authenticated');
@@ -95,7 +97,9 @@ class FirebaseDiaryService {
 
   // Firebase'de günlük güncelleme
   static Future<void> updateDiaryInFirebase(
-      String diaryId, Map<String, dynamic> updatedData) async {
+    String diaryId,
+    Map<String, dynamic> updatedData,
+  ) async {
     try {
       if (_userId == null) {
         throw Exception('User not authenticated');
@@ -124,11 +128,11 @@ class FirebaseDiaryService {
   static Future<void> syncLocalDiariesToFirebase() async {
     try {
       final localDiaries = await DiaryService.getDiaryEntries();
-      
+
       for (final diary in localDiaries) {
         await addDiaryToFirebase(diary);
       }
-      
+
       print('✅ All local diaries synced to Firebase');
     } catch (e) {
       print('❌ Error syncing diaries to Firebase: $e');
@@ -140,15 +144,15 @@ class FirebaseDiaryService {
   static Future<void> syncFirebaseDiariesToLocal() async {
     try {
       final firebaseDiaries = await getDiariesFromFirebase();
-      
+
       // Yerel depolamayı temizle
       await DiaryService.clearAllEntries();
-      
+
       // Firebase'den gelen verileri yerel depolamaya kaydet
       for (final diary in firebaseDiaries) {
         await DiaryService.saveDiaryEntry(diary);
       }
-      
+
       print('✅ All Firebase diaries synced to local');
     } catch (e) {
       print('❌ Error syncing diaries from Firebase: $e');

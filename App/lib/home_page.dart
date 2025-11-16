@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'routes_manager.dart';
 import 'chat_page.dart'; // Need to make it all in routes_manager.dart. It is hard-coded right now.
 import 'profile_page.dart'; // Need to make it all in routes_manager.dart. It is hard-coded right now.
+import 'motivational_speeches.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -13,6 +14,9 @@ class HomePage extends StatelessWidget {
     final now = DateTime.now();
     final month = DateFormat.MMMM().format(now);
     final year = now.year;
+    final dayOfYear = int.parse(DateFormat("D").format(now)); // 1-365/366
+    final speechIndex = dayOfYear % speeches.length; // rotate through list
+    final todaySpeech = speeches[speechIndex];
 
     return Scaffold(
       backgroundColor: const Color(0xFFE8F4F9),
@@ -134,47 +138,75 @@ class HomePage extends StatelessWidget {
               ),
             ),
 
-            // 🔮 Horoscope Card
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9DDE2),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.black26, width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.auto_fix_high, color: Colors.black87),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          "Taurus Daily Horoscope (${DateFormat.MMMM().format(now)} ${now.day}, $year):", // dynamic date.
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
-                        ),
+            // 📝 Speech Card
+            // Speech Card
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFF7F7), Color(0xFFFDEDED)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 8,
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Stay calm and patient today. Even if small setbacks occur, your steady approach will help you end the day feeling accomplished and grounded. 🐂✨",
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      height: 1.5,
-                      color: Colors.black87,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.auto_fix_high,
+                              color: Colors.black87,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "Daily Motivation",
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 18,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              "$month ${now.day}, $year",
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w400,
+                                fontSize: 14,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          todaySpeech,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            height: 1.7,
+                            color: Colors.black87,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-
             const Spacer(),
 
             // ⚙️ Bottom Navigation Bar
