@@ -17,6 +17,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> diaryEntries = [];
   bool isLoading = true;
+  String? errorMessage;
 
   @override
   void initState() {
@@ -24,9 +25,14 @@ class _ChatPageState extends State<ChatPage> {
     _loadDiaryEntries();
   }
 
-  // Load diaries only for current logged-in user
+  // Load diaries from FastAPI backend
   Future<void> _loadDiaryEntries() async {
     try {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+
       final entries = await DiaryService.getDiaryEntries();
       setState(() {
         diaryEntries = entries;
@@ -36,6 +42,7 @@ class _ChatPageState extends State<ChatPage> {
       print('Error loading diary entries: $e');
       setState(() {
         isLoading = false;
+        errorMessage = 'Failed to load diaries. Please check your connection.';
       });
     }
   }
@@ -49,12 +56,16 @@ class _ChatPageState extends State<ChatPage> {
     if (result != null && result is Map<String, dynamic>) {
       try {
         await DiaryService.saveDiaryEntry(result);
-        _loadDiaryEntries();
+        _loadDiaryEntries(); // Reload the list
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Diary saved successfully!')),
+        );
       } catch (e) {
         print('Error saving diary entry: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error saving diary entry')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving diary: $e')));
       }
     }
   }
@@ -66,6 +77,36 @@ class _ChatPageState extends State<ChatPage> {
         builder: (context) => DiaryDetailPage(diaryEntry: entry),
       ),
     );
+  }
+
+  Future<void> _getPsychologicalAdvice() async {
+    try {
+      // You'll need to get these from user profile
+      final analysis = await DiaryService.analyzeDiaries(
+        characterType: 'INTP', // Get from user profile
+        sign: 'Scorpio', // Get from user profile
+        birthMap: 'Sun in Scorpio, Moon in Cancer', // Get from user profile
+        diaryCount: 5,
+      );
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Your Psychological Analysis'),
+          content: SingleChildScrollView(child: Text(analysis['advice'])),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error getting analysis: $e')));
+    }
   }
 
   @override
@@ -87,6 +128,11 @@ class _ChatPageState extends State<ChatPage> {
                       fontSize: 28,
                       color: Colors.black87,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.psychology_outlined),
+                    onPressed: _getPsychologicalAdvice,
+                    tooltip: 'Get Psychological Analysis',
                   ),
                 ],
               ),
@@ -121,23 +167,40 @@ class _ChatPageState extends State<ChatPage> {
               ),
             ),
 
-            // 🕓 Previous Diaries
+            // 🕓 Previous Diaries Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 25.0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Your previous diaries",
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Your previous diaries",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loadDiaryEntries,
+                    tooltip: 'Refresh diaries',
+                  ),
+                ],
               ),
             ),
 
             const SizedBox(height: 10),
+
+            // Error message
+            if (errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                child: Text(
+                  errorMessage!,
+                  style: const TextStyle(color: Colors.red, fontSize: 14),
+                ),
+              ),
 
             // 📅 List of previous diary dates
             Expanded(
@@ -149,9 +212,24 @@ class _ChatPageState extends State<ChatPage> {
                 child: isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : diaryEntries.isEmpty
-                    ? const Text(
-                        "No diary entries yet. Start writing!",
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                    ? Column(
+                        children: [
+                          const SizedBox(height: 50),
+                          Icon(
+                            Icons.edit_note,
+                            size: 64,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "No diary entries yet.\nStart writing your first diary!",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
                       )
                     : Column(
                         children: diaryEntries.map((entry) {
@@ -163,17 +241,51 @@ class _ChatPageState extends State<ChatPage> {
                               horizontal: 16,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
+                              color: Colors.white,
                               borderRadius: BorderRadius.circular(30),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: InkWell(
                               onTap: () => _openDiaryDetail(entry),
-                              child: Text(
-                                entry['formattedDate'] ?? 'No date',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 15,
-                                  color: Colors.black87,
-                                ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      entry['formattedDate'] ?? 'No date',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 15,
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  if (entry['mood'] != null &&
+                                      entry['mood'].isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _getMoodColor(entry['mood']),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        entry['mood'],
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           );
@@ -236,5 +348,22 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+  }
+
+  Color _getMoodColor(String mood) {
+    switch (mood.toLowerCase()) {
+      case 'happy':
+        return Colors.green;
+      case 'sad':
+        return Colors.blue;
+      case 'excited':
+        return Colors.orange;
+      case 'calm':
+        return Colors.purple;
+      case 'anxious':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 }

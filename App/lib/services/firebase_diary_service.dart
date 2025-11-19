@@ -127,35 +127,83 @@ class FirebaseDiaryService {
   // Tüm günlükleri senkronize etme (yerel -> firebase)
   static Future<void> syncLocalDiariesToFirebase() async {
     try {
-      final localDiaries = await DiaryService.getDiaryEntries();
-
-      for (final diary in localDiaries) {
-        await addDiaryToFirebase(diary);
-      }
-
-      print('✅ All local diaries synced to Firebase');
+      // Since we're now using FastAPI backend, we don't have local storage
+      // This method is now deprecated but kept for backward compatibility
+      print(
+        '⚠️ syncLocalDiariesToFirebase is deprecated - using FastAPI backend',
+      );
     } catch (e) {
       print('❌ Error syncing diaries to Firebase: $e');
       rethrow;
     }
   }
 
-  // Firebase'den yerel depolamaya senkronizasyon
-  static Future<void> syncFirebaseDiariesToLocal() async {
+  // Firebase'den FastAPI backend'e senkronizasyon
+  static Future<void> syncFirebaseToBackend() async {
     try {
       final firebaseDiaries = await getDiariesFromFirebase();
 
-      // Yerel depolamayı temizle
-      await DiaryService.clearAllEntries();
-
-      // Firebase'den gelen verileri yerel depolamaya kaydet
+      // Migrate each diary to the FastAPI backend
       for (final diary in firebaseDiaries) {
-        await DiaryService.saveDiaryEntry(diary);
+        try {
+          await DiaryService.saveDiaryEntry({
+            'content': diary['content'],
+            'mood':
+                '', // You can extract mood from tags or content if available
+            'tags': [], // You can extract tags if available in Firebase data
+          });
+          print('✅ Migrated diary: ${diary['id']}');
+        } catch (e) {
+          print('❌ Failed to migrate diary ${diary['id']}: $e');
+        }
       }
 
-      print('✅ All Firebase diaries synced to local');
+      print('✅ All Firebase diaries migrated to backend');
     } catch (e) {
       print('❌ Error syncing diaries from Firebase: $e');
+      rethrow;
+    }
+  }
+
+  // Check if user has data in Firebase that needs migration
+  static Future<bool> hasFirebaseData() async {
+    try {
+      if (_userId == null) return false;
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(_userId)
+          .collection('diaries')
+          .limit(1)
+          .get();
+
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      print('❌ Error checking Firebase data: $e');
+      return false;
+    }
+  }
+
+  // Clean up Firebase data after migration (optional)
+  static Future<void> cleanupFirebaseData() async {
+    try {
+      if (_userId == null) return;
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(_userId)
+          .collection('diaries')
+          .get();
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+      print('✅ Firebase diary data cleaned up');
+    } catch (e) {
+      print('❌ Error cleaning up Firebase data: $e');
       rethrow;
     }
   }
