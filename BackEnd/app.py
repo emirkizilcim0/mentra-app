@@ -23,7 +23,197 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database connection pool
+# Database connection poofrom fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import asyncpg
+import os
+import logging
+from diary_service import DiaryPsychologistAdvisor  # Updated import
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Remove all LangChain related code
+# Remove: from langchain.schema import Document
+# Remove any Document class usage
+
+# Your existing database and route code remains the same...
+connection_pool = None
+
+async def create_db_pool():
+    global connection_pool
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        logger.warning("DATABASE_URL not set, running without database")
+        return
+    
+    connection_pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=5,
+        max_size=20,
+    )
+    
+    async with connection_pool.acquire() as conn:
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS user_diaries (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                mood VARCHAR(100),
+                tags JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    logger.info("Database initialized")
+
+@app.on_event("startup")
+async def startup_event():
+    await create_db_pool()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if connection_pool:
+        await connection_pool.close()
+
+class DiaryEntry(BaseModel):
+    content: str
+    mood: Optional[str] = None
+    tags: Optional[List[str]] = []
+
+class DiaryAnalysisRequest(BaseModel):
+    user_id: str
+    character_type: str
+    sign: str
+    birth_map: str
+    diary_count: Optional[int] = 10
+
+# Initialize psychologist - ONLY if API key is available
+psychologist = None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    psychologist = DiaryPsychologistAdvisor(api_key=GEMINI_API_KEY)
+else:
+    logger.warning("GEMINI_API_KEY not set - AI features disabled")
+
+@app.get("/")
+async def home():
+    return {"message": "Mentra Backend is running!", "status": "healthy"}
+
+@app.post("/diaries/save")
+async def save_diary(entry: DiaryEntry, user_id: str):
+    """Save a new diary entry"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        diary_id = await connection_pool.fetchval('''
+            INSERT INTO user_diaries (user_id, content, mood, tags)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+        ''', user_id, entry.content, entry.mood, entry.tags)
+        
+        return {
+            "message": "Diary saved successfully",
+            "diary_id": diary_id,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving diary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save diary")
+
+@app.get("/diaries/{user_id}")
+async def get_user_diaries(user_id: str, limit: int = 20):
+    """Get user diaries"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        diaries = await connection_pool.fetch('''
+            SELECT id, content, mood, tags, created_at
+            FROM user_diaries 
+            WHERE user_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT $2
+        ''', user_id, limit)
+        
+        return {
+            "diaries": [
+                {
+                    "id": diary["id"],
+                    "content": diary["content"],
+                    "mood": diary["mood"],
+                    "tags": diary["tags"],
+                    "date": diary["created_at"].isoformat()
+                }
+                for diary in diaries
+            ],
+            "total": len(diaries)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching diaries: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch diaries")
+
+@app.post("/analyze/diaries")
+async def analyze_diaries(request: DiaryAnalysisRequest):
+    """Analyze diaries with AI"""
+    try:
+        if not psychologist:
+            raise HTTPException(status_code=503, detail="AI service not available")
+        
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        # Get user diaries
+        diaries = await connection_pool.fetch('''
+            SELECT content FROM user_diaries 
+            WHERE user_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT $2
+        ''', request.user_id, request.diary_count)
+        
+        if not diaries:
+            raise HTTPException(status_code=404, detail="No diaries found")
+        
+        diary_contents = [diary["content"] for diary in diaries]
+        
+        # Get AI analysis
+        analysis_result = psychologist.analyze_diaries(
+            diaries=diary_contents,
+            character_type=request.character_type,
+            sign=request.sign,
+            birth_map=request.birth_map
+        )
+        
+        if analysis_result["status"] == "error":
+            raise HTTPException(status_code=500, detail=analysis_result["error"])
+        
+        return analysis_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing diaries: {e}")
+        raise HTTPException(status_code=500, detail="Failed to analyze diaries")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 connection_pool = None
 
 async def create_db_pool():

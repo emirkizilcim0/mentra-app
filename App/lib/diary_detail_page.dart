@@ -4,10 +4,7 @@ import 'package:intl/intl.dart';
 class DiaryDetailPage extends StatelessWidget {
   final Map<String, dynamic> diaryEntry;
 
-  const DiaryDetailPage({
-    super.key,
-    required this.diaryEntry,
-  });
+  const DiaryDetailPage({super.key, required this.diaryEntry});
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +42,7 @@ class DiaryDetailPage extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               diaryEntry['formattedDate'] ?? 'Unknown date',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
             ),
             const SizedBox(height: 24),
             Container(

@@ -1,7 +1,5 @@
 import google.generativeai as genai
-from langchain.schema import Document
 from typing import List, Dict, Any
-import json
 import logging
 from datetime import datetime
 import os
@@ -65,24 +63,3 @@ class DiaryPsychologistAdvisor:
                 "error": str(e),
                 "status": "error"
             }
-
-def create_documents_from_diaries(diaries: List[Dict]) -> List[Document]:
-    """Convert diary entries to Document objects"""
-    documents = []
-    for diary in diaries:
-        content = f"Date: {diary.get('date', 'Unknown')}\n"
-        content += f"Mood: {diary.get('mood', 'Not specified')}\n"
-        content += f"Content: {diary.get('content', '')}\n"
-        content += f"Tags: {', '.join(diary.get('tags', []))}"
-        
-        documents.append(Document(
-            page_content=content,
-            metadata={
-                "source": "user_diary",
-                "date": diary.get('date'),
-                "mood": diary.get('mood'),
-                "tags": diary.get('tags', [])
-            }
-        ))
-    
-    return documents
