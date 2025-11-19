@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'auth_service.dart';
 
 String getZodiac(DateTime date) {
@@ -41,13 +41,11 @@ class SignupDetailsPage extends StatefulWidget {
 
 class _SignupDetailsPageState extends State<SignupDetailsPage> {
   final AuthService _authService = AuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
   DateTime? birthDate;
   bool isLoading = false;
-
-  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? "unknown";
-  String _key(String key) => "${key}_$_uid"; // namespaced key
 
   Future<void> _pickBirthDate() async {
     final now = DateTime.now();
@@ -77,7 +75,7 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
 
     setState(() => isLoading = true);
     try {
-      // Hesap oluşturma (Firebase Auth)
+      // Create account (Firebase Auth)
       final user = await _authService.signUpWithEmail(
         widget.email,
         widget.password,
@@ -90,13 +88,18 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
         return;
       }
 
-      // Profil bilgilerini yerelde sakla (user-specific)
+      // Save profile data to Firestore
       final zodiac = getZodiac(bd);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_key('profile_zodiac'), zodiac);
-      await prefs.setString(_key('profile_firstName'), firstName);
-      await prefs.setString(_key('profile_lastName'), lastName);
-      await prefs.setString(_key('profile_birthDateISO'), bd.toIso8601String());
+      await _firestore.collection('users').doc(user.uid).set({
+        'firstName': firstName,
+        'lastName': lastName,
+        'birthDate': bd.toIso8601String(),
+        'zodiac': zodiac,
+        'email': widget.email,
+        'createdAt': FieldValue.serverTimestamp(),
+        'mbtiTitle': "No result yet",
+        'mbtiDesc': "",
+      });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

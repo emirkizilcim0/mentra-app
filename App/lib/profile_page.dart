@@ -1,9 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'home_page.dart';
+
+String getZodiac(DateTime date) {
+  int day = date.day;
+  int month = date.month;
+
+  if ((month == 3 && day >= 21) || (month == 4 && day <= 19)) return "Aries";
+  if ((month == 4 && day >= 20) || (month == 5 && day <= 20)) return "Taurus";
+  if ((month == 5 && day >= 21) || (month == 6 && day <= 20)) return "Gemini";
+  if ((month == 6 && day >= 21) || (month == 7 && day <= 22)) return "Cancer";
+  if ((month == 7 && day >= 23) || (month == 8 && day <= 22)) return "Leo";
+  if ((month == 8 && day >= 23) || (month == 9 && day <= 22)) return "Virgo";
+  if ((month == 9 && day >= 23) || (month == 10 && day <= 22)) return "Libra";
+  if ((month == 10 && day >= 23) || (month == 11 && day <= 21))
+    return "Scorpio";
+  if ((month == 11 && day >= 22) || (month == 12 && day <= 21))
+    return "Sagittarius";
+  if ((month == 12 && day >= 22) || (month == 1 && day <= 19))
+    return "Capricorn";
+  if ((month == 1 && day >= 20) || (month == 2 && day <= 18)) return "Aquarius";
+  return "Pisces";
+}
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,15 +36,16 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController signController = TextEditingController();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   String mbtiTitle = "No result yet";
   String mbtiDesc = "";
+  String mbtiType = "";
   String zodiac = "";
   String birthDate = "";
+  DateTime? selectedBirthDate;
 
   String get _uid => FirebaseAuth.instance.currentUser?.uid ?? "unknown";
-
-  String _key(String key) => "${key}_$_uid"; // namespaced key
 
   @override
   void initState() {
@@ -32,52 +54,118 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> loadProfileData() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final doc = await _firestore.collection('users').doc(_uid).get();
 
-    setState(() {
-      // Combine first + last name
-      final firstName = prefs.getString(_key("profile_firstName")) ?? "";
-      final lastName = prefs.getString(_key("profile_lastName")) ?? "";
-      nameController.text = "$firstName $lastName";
+      if (doc.exists) {
+        final data = doc.data()!;
 
-      // Zodiac / Sign
-      zodiac = prefs.getString(_key("profile_zodiac")) ?? "";
-      signController.text = zodiac;
+        setState(() {
+          // Combine first + last name
+          final firstName = data['firstName'] ?? "";
+          final lastName = data['lastName'] ?? "";
+          nameController.text = "$firstName $lastName";
 
-      // Birth date
-      String birthDateIso = prefs.getString(_key("profile_birthDateISO")) ?? "";
-      if (birthDateIso.isNotEmpty) {
-        try {
-          DateTime birth = DateTime.parse(birthDateIso);
-          birthDate = DateFormat('d MMMM yyyy').format(birth);
-        } catch (e) {
-          birthDate = birthDateIso; // fallback
-        }
-      } else {
-        birthDate = "";
+          // Zodiac / Sign
+          zodiac = data['zodiac'] ?? "";
+          signController.text = zodiac;
+
+          // Birth date
+          String birthDateIso = data['birthDate'] ?? "";
+          if (birthDateIso.isNotEmpty) {
+            try {
+              selectedBirthDate = DateTime.parse(birthDateIso);
+              birthDate = DateFormat('d MMMM yyyy').format(selectedBirthDate!);
+            } catch (e) {
+              birthDate = birthDateIso;
+            }
+          } else {
+            birthDate = "";
+          }
+
+          // MBTI result
+          mbtiTitle = data['mbtiTitle'] ?? "No result yet";
+          mbtiDesc = data['mbtiDesc'] ?? "";
+          mbtiType = data['mbtiType'] ?? "";
+        });
       }
+    } catch (e) {
+      print("Error loading profile data: $e");
+    }
+  }
 
-      // MBTI result
-      mbtiTitle = prefs.getString(_key("profile_mbtiTitle")) ?? "No result yet";
-      mbtiDesc = prefs.getString(_key("profile_mbtiDesc")) ?? "";
-    });
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final initial =
+        selectedBirthDate ?? DateTime(now.year - 18, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1900),
+      lastDate: now,
+    );
+
+    if (picked != null) {
+      final newZodiac = getZodiac(picked);
+
+      setState(() {
+        selectedBirthDate = picked;
+        birthDate = DateFormat('d MMMM yyyy').format(picked);
+        zodiac = newZodiac;
+        signController.text = newZodiac;
+      });
+
+      // Auto-save the new birth date and zodiac
+      await _saveBirthDateAndZodiac(picked, newZodiac);
+    }
+  }
+
+  Future<void> _saveBirthDateAndZodiac(
+    DateTime birthDate,
+    String zodiac,
+  ) async {
+    try {
+      await _firestore.collection('users').doc(_uid).set({
+        'birthDate': birthDate.toIso8601String(),
+        'zodiac': zodiac,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Birth date updated successfully!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error updating birth date: $e')));
+    }
   }
 
   Future<void> saveProfileData() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final fullName = nameController.text.split(" ");
+      String firstName = "";
+      String lastName = "";
 
-    // Save name
-    final fullName = nameController.text.split(" ");
-    if (fullName.isNotEmpty) {
-      await prefs.setString(_key("profile_firstName"), fullName[0]);
-      await prefs.setString(
-        _key("profile_lastName"),
-        fullName.length > 1 ? fullName[1] : "",
+      if (fullName.isNotEmpty) {
+        firstName = fullName[0];
+        lastName = fullName.length > 1 ? fullName[1] : "";
+      }
+
+      await _firestore.collection('users').doc(_uid).set({
+        'firstName': firstName,
+        'lastName': lastName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated successfully!')),
       );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error updating profile: $e')));
     }
-
-    await prefs.setString(_key("profile_zodiac"), signController.text);
-    // Optional: save birthDateISO if user edits birth date
   }
 
   @override
@@ -99,6 +187,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       fontSize: 28,
                       color: Colors.black87,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.save),
+                    onPressed: saveProfileData,
+                    tooltip: 'Save Profile',
                   ),
                 ],
               ),
@@ -153,11 +246,45 @@ class _ProfilePageState extends State<ProfilePage> {
                       // ---------------- FIELDS ----------------
                       _buildField("Name", nameController),
                       const SizedBox(height: 12),
-                      _buildField("Zodiac / Sign", signController),
+
+                      // Zodiac Field (Read-only)
+                      TextField(
+                        controller: signController,
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: "Zodiac / Sign",
+                          filled: true,
+                          fillColor: const Color(0xFFF9FBFC),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          suffixIcon: const Icon(Icons.lock, size: 16),
+                        ),
+                      ),
                       const SizedBox(height: 12),
-                      _buildField(
-                        "Birth Date",
-                        TextEditingController()..text = birthDate,
+
+                      // Birth Date Field (Clickable)
+                      InkWell(
+                        onTap: _pickBirthDate,
+                        child: IgnorePointer(
+                          child: TextField(
+                            controller: TextEditingController()
+                              ..text = birthDate,
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: "Birth Date",
+                              filled: true,
+                              fillColor: const Color(0xFFF9FBFC),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              suffixIcon: const Icon(
+                                Icons.calendar_today,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 20),
 
@@ -172,7 +299,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              "$mbtiTitle",
+                              mbtiType.isNotEmpty
+                                  ? "$mbtiType - $mbtiTitle"
+                                  : mbtiTitle,
                               style: GoogleFonts.poppins(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -244,10 +373,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           onPressed: () async {
                             await FirebaseAuth.instance.signOut();
                             if (!mounted) return;
-                            Navigator.pushReplacementNamed(
-                              context,
-                              '/login',
-                            ); // make sure /login route exists
+                            Navigator.pushReplacementNamed(context, '/login');
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFD68DA8),

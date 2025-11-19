@@ -1,28 +1,52 @@
 // result_screen.dart
 
 import 'package:flutter/material.dart';
-import '../mbti/personality_data.dart'; // Yeni oluşturulan dosya yolu
-import 'package:shared_preferences/shared_preferences.dart';
+import '../mbti/personality_data.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ResultScreen extends StatelessWidget {
   final PersonalityResult result;
   final VoidCallback onRetakeTest;
+  final BorderRadius borderRadius;
+  final Map<String, int> scores;
 
   const ResultScreen({
     Key? key,
     required this.result,
     required this.onRetakeTest,
-    required BorderRadius borderRadius,
-    required Map<String, int> scores,
+    required this.borderRadius,
+    required this.scores,
   }) : super(key: key);
+
+  Future<void> _saveResultToFirestore(BuildContext context) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'mbtiTitle': result.title,
+        'mbtiDesc': result.description,
+        'mbtiType': result.type,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Navigate to home page after saving
+      Navigator.pushNamed(context, "/home");
+    } catch (e) {
+      print("Error saving MBTI result: $e");
+      // Still navigate even if there's an error
+      Navigator.pushNamed(context, "/home");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Test Sonucunuz'),
-        backgroundColor: result.color.withOpacity(0.8), // Tipe göre renk
-        automaticallyImplyLeading: false, // Geri tuşunu kaldır
+        backgroundColor: result.color.withOpacity(0.8),
+        automaticallyImplyLeading: false,
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -68,16 +92,9 @@ class ResultScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 50),
-              // Testi Tekrar Çöz Butonu
+              // Continue Button
               ElevatedButton.icon(
-                onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString("profile_mbti", result.type);
-                  await prefs.setString("profile_mbtiTitle", result.title);
-                  await prefs.setString("profile_mbtiDesc", result.description);
-
-                  Navigator.pushNamed(context, "/home");
-                },
+                onPressed: () => _saveResultToFirestore(context),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Continue', style: TextStyle(fontSize: 18)),
                 style: ElevatedButton.styleFrom(
