@@ -7,7 +7,7 @@ import os
 import asyncio
 from datetime import datetime
 import logging
-from diary_service import DiaryPsychologistAdvisor, create_documents_from_diaries
+from diary_service import DiaryPsychologistAdvisor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
