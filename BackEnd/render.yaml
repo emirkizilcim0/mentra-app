@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: mentra-backend
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    buildCommand: ""
+    startCommand: ""
+    disk:
+      name: chroma
+      mountPath: /app/chroma
+      sizeGB: 1
+    autoDeploy: true
