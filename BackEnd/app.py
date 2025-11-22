@@ -1,12 +1,12 @@
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 import asyncpg
 import os
-import asyncio
 from datetime import datetime
 import logging
+import json  
 from diary_service import DiaryPsychologistAdvisor
 
 logging.basicConfig(level=logging.INFO)
@@ -187,7 +187,6 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         diary_contents = [diary["content"] for diary in diaries]
         
         # Get psychological advice (this will handle empty diaries gracefully)
-        psychologist = DiaryPsychologistAdvisor()
         analysis_result = psychologist.analyze_diaries(
             diaries=diary_contents,
             character_type=request.character_type,
@@ -199,14 +198,20 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             # Even if there's an error, we return the fallback advice
             logger.error(f"Analysis error: {analysis_result.get('error')}")
         
+        # FIX: Convert the analysis_data to JSON string using json.dumps()
+        analysis_data = json.dumps({
+            "character_type": request.character_type,
+            "sign": request.sign,
+            "birth_map": request.birth_map
+        })
+        
         # Save the analysis result
-        if connection_pool:
-            analysis_id = await connection_pool.fetchval('''
-                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id
-            ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-                 len(diaries), {"character_type": request.character_type, "sign": request.sign})
+        analysis_id = await connection_pool.fetchval('''
+            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        ''', request.user_id, "diary_analysis", analysis_result["advice"], 
+             len(diaries), analysis_data)  # Now passing JSON string instead of dict
         
         return AnalysisResponse(
             advice=analysis_result["advice"],
@@ -233,7 +238,7 @@ async def get_analysis_history(user_id: str, limit: int = 10):
             raise HTTPException(status_code=500, detail="Database not configured")
         
         analyses = await connection_pool.fetch('''
-            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at
+            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data
             FROM user_analyses 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
@@ -247,7 +252,8 @@ async def get_analysis_history(user_id: str, limit: int = 10):
                     "type": analysis["analysis_type"],
                     "advice": analysis["advice_text"],
                     "diaries_analyzed": analysis["diaries_analyzed"],
-                    "date": analysis["created_at"].isoformat()
+                    "date": analysis["created_at"].isoformat(),
+                    "analysis_data": analysis["analysis_data"]  # This will be automatically converted from JSONB
                 }
                 for analysis in analyses
             ]
@@ -280,9 +286,45 @@ async def delete_diary(diary_id: int, user_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting diary: {e}")
+        logger.error(f"Error deleting diary: $e")
         raise HTTPException(status_code=500, detail="Failed to delete diary")
 
+# Add a test endpoint to verify JSONB works
+@app.get("/test-jsonb")
+async def test_jsonb():
+    """Test JSONB insertion and retrieval"""
+    try:
+        if not connection_pool:
+            return {"error": "No database connection"}
+        
+        test_data = {
+            "character_type": "ISTJ", 
+            "sign": "Aquarius", 
+            "birth_map": "Test",
+            "test_timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Test insertion with json.dumps
+        analysis_id = await connection_pool.fetchval('''
+            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        ''', "test_user", "test_analysis", "This is a test advice", 1, json.dumps(test_data))
+        
+        # Test retrieval
+        result = await connection_pool.fetchrow('''
+            SELECT analysis_data FROM user_analyses WHERE id = $1
+        ''', analysis_id)
+        
+        return {
+            "success": True,
+            "inserted_id": analysis_id,
+            "retrieved_data": result["analysis_data"],
+            "message": "JSONB test completed successfully"
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "success": False}
 
 if __name__ == "__main__":
     import uvicorn
@@ -293,4 +335,3 @@ if __name__ == "__main__":
         port=port,
         workers=4
     )
-
