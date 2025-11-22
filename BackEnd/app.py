@@ -98,7 +98,7 @@ class AnalysisResponse(BaseModel):
 
 # Initialize the psychologist advisor
 psychologist = DiaryPsychologistAdvisor(
-    api_key="AIzaSyDqEJV1p1WAqlVbcHhxN3K-KAzZNBh1-o4",  # Set this in Render environment variables
+    api_key="AIzaSyBAYsk20ZEoCuyi-8K4a8aCwO18GHGxWko",  # Set this in Render environment variables
     model="models/gemini-2.0-flash"
 )
 

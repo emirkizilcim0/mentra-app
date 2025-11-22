@@ -9,10 +9,10 @@ logger = logging.getLogger(__name__)
 class DiaryPsychologistAdvisor:
     """Psychologist class to provide advice based on user diaries"""
     
-    def __init__(self, api_key: str = None, model: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: str = None, model: str = "models/gemini-2.0-flash"):
         # Use environment variable for API key if not provided
         if api_key is None:
-            api_key = os.getenv("GEMINI_API_KEY", "AIzaSyDqEJV1p1WAqlVbcHhxN3K-KAzZNBh1-o4")
+            api_key = os.getenv("GEMINI_API_KEY", "AIzaSyBAYsk20ZEoCuyi-8K4a8aCwO18GHGxWko")
         
         if not api_key:
             raise ValueError("Gemini API key is required")
@@ -52,7 +52,8 @@ class DiaryPsychologistAdvisor:
             "gemini-1.5-flash",
             "gemini-1.0-pro",
             "gemini-pro",
-            "models/gemini-pro"
+            "models/gemini-pro",
+            "models/gemini-2.0-flash"
         ]
         
         for model in models_to_try:
