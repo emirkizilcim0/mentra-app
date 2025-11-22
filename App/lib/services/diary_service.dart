@@ -3,8 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 
 class DiaryService {
-  static const String baseUrl =
-      'https://mentra-app.onrender.com'; // Replace with your Render URL
+  static const String baseUrl = 'https://mentra-app.onrender.com';
   static final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Get current user ID

@@ -19,7 +19,6 @@ class DiaryPsychologistAdvisor:
         USER PROFILE:
         - MBTI Personality: {character_type}
         - Zodiac Sign: {sign}
-        - Birth Chart: {birth_map}
 
         USER'S DIARY ENTRIES:
         {diary_text}

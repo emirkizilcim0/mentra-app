@@ -81,7 +81,7 @@ async def shutdown_event():
 class DiaryEntry(BaseModel):
     content: str
     mood: Optional[str] = None
-    tags: Optional[List[str]] = []
+    tags: Optional[List[str]] = None
 
 class DiaryAnalysisRequest(BaseModel):
     user_id: str
@@ -122,7 +122,7 @@ async def save_diary(entry: DiaryEntry, user_id: str):
             INSERT INTO user_diaries (user_id, content, mood, tags)
             VALUES ($1, $2, $3, $4)
             RETURNING id
-        ''', user_id, entry.content, entry.mood, entry.tags)
+        ''', user_id, entry.content, entry.mood, entry.tags if entry.tags else None)
         
         return {
             "message": "Diary saved successfully",
