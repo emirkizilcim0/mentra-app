@@ -19,9 +19,10 @@ class DiaryService {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/diaries/save?user_id=$_userId'),
+        Uri.parse('$baseUrl/diaries/save'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
+          'user_id': _userId, // Send user_id in the body as expected by backend
           'content': entry['content'],
           'mood': entry['mood'] ?? '',
           'tags': entry['tags'] ?? [],
@@ -31,7 +32,10 @@ class DiaryService {
       if (response.statusCode == 200) {
         final result = json.decode(response.body);
         print('✅ Diary saved to backend: ${result['diary_id']}');
-        return entry; // Return the original entry with any updates
+        return {
+          ...entry,
+          'id': result['diary_id'].toString(),
+        }; // Return the entry with backend ID
       } else {
         throw Exception(
           'Failed to save diary: ${response.statusCode} - ${response.body}',
@@ -72,7 +76,9 @@ class DiaryService {
           };
         }).toList();
       } else {
-        throw Exception('Failed to fetch diaries: ${response.statusCode}');
+        throw Exception(
+          'Failed to fetch diaries: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       print('❌ Error getting diaries from backend: $e');
@@ -107,7 +113,9 @@ class DiaryService {
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        throw Exception('Failed to analyze diaries: ${response.statusCode}');
+        throw Exception(
+          'Failed to analyze diaries: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       print('❌ Error analyzing diaries: $e');
@@ -115,16 +123,63 @@ class DiaryService {
     }
   }
 
+  // Get analysis history
+  static Future<List<Map<String, dynamic>>> getAnalysisHistory({
+    int limit = 10,
+  }) async {
+    try {
+      if (_userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/analysis/history/$_userId?limit=$limit'),
+        headers: {'Accept': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> analyses = data['analyses'];
+
+        return analyses.map((analysis) {
+          return {
+            'id': analysis['id'].toString(),
+            'type': analysis['type'],
+            'advice': analysis['advice'],
+            'diaries_analyzed': analysis['diaries_analyzed'],
+            'date': analysis['date'],
+            'formattedDate': _formatDateForDisplay(analysis['date']),
+          };
+        }).toList();
+      } else {
+        throw Exception(
+          'Failed to fetch analysis history: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      print('❌ Error getting analysis history: $e');
+      rethrow;
+    }
+  }
+
   // Delete diary entry
   static Future<void> deleteDiaryEntry(String diaryId) async {
     try {
-      // Note: You'll need to add a DELETE endpoint to your FastAPI backend
+      if (_userId == null) {
+        throw Exception('User not authenticated');
+      }
+
       final response = await http.delete(
-        Uri.parse('$baseUrl/diaries/$diaryId'),
+        Uri.parse('$baseUrl/diaries/$diaryId?user_id=$_userId'),
+        headers: {'Accept': 'application/json'},
       );
 
-      if (response.statusCode != 200) {
-        throw Exception('Failed to delete diary: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        print('✅ Diary deleted successfully: $diaryId');
+      } else {
+        throw Exception(
+          'Failed to delete diary: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
       print('❌ Error deleting diary: $e');
@@ -132,10 +187,56 @@ class DiaryService {
     }
   }
 
+  // Get specific diary entry
+  static Future<Map<String, dynamic>> getDiaryEntry(String diaryId) async {
+    try {
+      if (_userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // First get all diaries and find the specific one
+      final diaries = await getDiaryEntries();
+      final diary = diaries.firstWhere(
+        (diary) => diary['id'] == diaryId,
+        orElse: () => throw Exception('Diary not found'),
+      );
+
+      return diary;
+    } catch (e) {
+      print('❌ Error getting diary entry: $e');
+      rethrow;
+    }
+  }
+
+  // Update diary entry
+  static Future<Map<String, dynamic>> updateDiaryEntry(
+    String diaryId,
+    Map<String, dynamic> updates,
+  ) async {
+    try {
+      if (_userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Note: You'll need to implement an update endpoint in your backend
+      // For now, we'll delete and create a new one, or you can implement properly
+      await deleteDiaryEntry(diaryId);
+      final newEntry = await saveDiaryEntry(updates);
+
+      return newEntry;
+    } catch (e) {
+      print('❌ Error updating diary entry: $e');
+      rethrow;
+    }
+  }
+
   // Helper methods
   static String _generateTitleFromContent(String content) {
-    if (content.length <= 30) return content;
-    return '${content.substring(0, 30)}...';
+    if (content.isEmpty) return 'Untitled Diary';
+    final lines = content.split('\n');
+    final firstLine = lines.first.trim();
+    if (firstLine.length <= 30) return firstLine;
+    return '${firstLine.substring(0, 30)}...';
   }
 
   static String _formatDateForDisplay(String dateString) {
@@ -168,5 +269,52 @@ class DiaryService {
       'Dec',
     ];
     return months[month - 1];
+  }
+
+  // Utility method to check backend health
+  static Future<bool> checkBackendHealth() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/'),
+        headers: {'Accept': 'application/json'},
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ Backend health check failed: $e');
+      return false;
+    }
+  }
+
+  // Get user statistics
+  static Future<Map<String, dynamic>> getUserStatistics() async {
+    try {
+      if (_userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final diaries = await getDiaryEntries();
+      final analyses = await getAnalysisHistory();
+
+      // Calculate mood statistics
+      final moodCounts = <String, int>{};
+      for (final diary in diaries) {
+        final mood = diary['mood']?.toString().toLowerCase() ?? 'unknown';
+        moodCounts[mood] = (moodCounts[mood] ?? 0) + 1;
+      }
+
+      return {
+        'total_diaries': diaries.length,
+        'total_analyses': analyses.length,
+        'mood_distribution': moodCounts,
+        'last_diary_date': diaries.isNotEmpty ? diaries.first['date'] : null,
+        'last_analysis_date': analyses.isNotEmpty
+            ? analyses.first['date']
+            : null,
+      };
+    } catch (e) {
+      print('❌ Error getting user statistics: $e');
+      rethrow;
+    }
   }
 }

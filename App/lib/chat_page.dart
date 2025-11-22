@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
 import 'diary_write_page.dart';
@@ -17,12 +18,51 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> diaryEntries = [];
   bool isLoading = true;
+  bool isLoadingAdvice = false;
   String? errorMessage;
+
+  // User data from Firebase
+  String userName = "User";
+  String userSign = "";
+  String userCharacterType = "";
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
     _loadDiaryEntries();
+  }
+
+  // Load user data from Firebase
+  Future<void> _loadUserData() async {
+    try {
+      final User? user = _auth.currentUser;
+      if (user != null) {
+        final doc = await _firestore.collection('users').doc(user.uid).get();
+
+        if (doc.exists) {
+          final data = doc.data()!;
+          setState(() {
+            // Combine first + last name
+            final firstName = data['firstName'] ?? "";
+            final lastName = data['lastName'] ?? "";
+            userName = "$firstName $lastName".trim();
+            if (userName.isEmpty) userName = "User";
+
+            // Zodiac sign
+            userSign = data['zodiac'] ?? "";
+
+            // MBTI/Character type
+            userCharacterType = data['mbtiType'] ?? "";
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    }
   }
 
   // Load diaries from FastAPI backend
@@ -58,8 +98,19 @@ class _ChatPageState extends State<ChatPage> {
         await DiaryService.saveDiaryEntry(result);
         _loadDiaryEntries(); // Reload the list
 
+        // Show success message with Get Advice button
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Diary saved successfully!')),
+          SnackBar(
+            content: const Text('Diary saved successfully!'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Get Advice',
+              textColor: Colors.white,
+              onPressed: () {
+                _getPsychologicalAdvice();
+              },
+            ),
+          ),
         );
       } catch (e) {
         print('Error saving diary entry: $e');
@@ -81,19 +132,101 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _getPsychologicalAdvice() async {
     try {
-      // You'll need to get these from user profile
+      setState(() {
+        isLoadingAdvice = true;
+      });
+
+      // Get analysis using user data from Firebase
       final analysis = await DiaryService.analyzeDiaries(
-        characterType: 'INTP', // Get from user profile
-        sign: 'Scorpio', // Get from user profile
-        birthMap: 'Sun in Scorpio, Moon in Cancer', // Get from user profile
-        diaryCount: 5,
+        characterType: userCharacterType.isNotEmpty
+            ? userCharacterType
+            : 'Not specified',
+        sign: userSign.isNotEmpty ? userSign : 'Not specified',
+        birthMap: 'Not specified', // As requested, not using birth map
+        diaryCount: diaryEntries.length,
       );
+
+      setState(() {
+        isLoadingAdvice = false;
+      });
 
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Your Psychological Analysis'),
-          content: SingleChildScrollView(child: Text(analysis['advice'])),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (userName != "User")
+                  Text(
+                    'For: $userName',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                if (userCharacterType.isNotEmpty)
+                  Text(
+                    'Personality: $userCharacterType',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                if (userSign.isNotEmpty)
+                  Text(
+                    'Zodiac: $userSign',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                const SizedBox(height: 16),
+                Text(analysis['advice'] ?? 'No advice available.'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        isLoadingAdvice = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error getting analysis: $e')));
+    }
+  }
+
+  Future<void> _getAdviceForDiary(Map<String, dynamic> diaryEntry) async {
+    try {
+      // Show loading for specific diary
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Creating an advice for ${diaryEntry['formattedDate']}...',
+          ),
+        ),
+      );
+
+      // You might want to modify this to analyze a specific diary
+      final analysis = await DiaryService.analyzeDiaries(
+        characterType: userCharacterType.isNotEmpty
+            ? userCharacterType
+            : 'Not specified',
+        sign: userSign.isNotEmpty ? userSign : 'Not specified',
+        birthMap: 'Not specified',
+        diaryCount: 1, // Analyzing based on recent diaries
+      );
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Advice for ${diaryEntry['formattedDate']}'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [Text(analysis['advice'] ?? 'No advice available.')],
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -105,7 +238,7 @@ class _ChatPageState extends State<ChatPage> {
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error getting analysis: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error getting advice: $e')));
     }
   }
 
@@ -265,6 +398,40 @@ class _ChatPageState extends State<ChatPage> {
                                       ),
                                     ),
                                   ),
+                                  // Get Advice Button
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.purple.shade500,
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    child: InkWell(
+                                      onTap: () => _getAdviceForDiary(entry),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.psychology,
+                                            size: 12,
+                                            color: Colors.white,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Get Advice',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  // Mood indicator
                                   if (entry['mood'] != null &&
                                       entry['mood'].isNotEmpty)
                                     Container(
