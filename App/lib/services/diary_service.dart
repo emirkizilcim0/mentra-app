@@ -10,6 +10,7 @@ class DiaryService {
   static String? get _userId => _auth.currentUser?.uid;
 
   // Save a new diary entry to FastAPI backend
+  // Save a new diary entry to FastAPI backend - FIXED VERSION
   static Future<Map<String, dynamic>> saveDiaryEntry(
     Map<String, dynamic> entry,
   ) async {
@@ -18,11 +19,11 @@ class DiaryService {
         throw Exception('User not authenticated');
       }
 
+      // FIX: Send user_id as query parameter in the URL
       final response = await http.post(
-        Uri.parse('$baseUrl/diaries/save'),
+        Uri.parse('$baseUrl/diaries/save?user_id=$_userId'), // ✅ user_id in URL
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'user_id': _userId, // Send user_id in the body as expected by backend
           'content': entry['content'],
           'mood': entry['mood'] ?? '',
           'tags': entry['tags'] ?? [],
@@ -31,18 +32,15 @@ class DiaryService {
 
       if (response.statusCode == 200) {
         final result = json.decode(response.body);
-        print('✅ Diary saved to backend: ${result['diary_id']}');
-        return {
-          ...entry,
-          'id': result['diary_id'].toString(),
-        }; // Return the entry with backend ID
+        print('Diary saved to backend: ${result['diary_id']}');
+        return {...entry, 'id': result['diary_id'].toString()};
       } else {
         throw Exception(
           'Failed to save diary: ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e) {
-      print('❌ Error saving diary to backend: $e');
+      print('Error saving diary to backend: $e');
       rethrow;
     }
   }
