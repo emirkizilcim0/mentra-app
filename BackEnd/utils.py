@@ -42,7 +42,7 @@ def get_config():
     """Load configuration from environment or defaults, using current working directory"""
     base_dir = Path.cwd()  # <-- ensures paths are relative to where script is run
     return {
-        'API_KEY': os.getenv('TUTOR_API_KEY', 'AIzaSyBAYsk20ZEoCuyi-8K4a8aCwO18GHGxWko'),   # User yours please...
+        'API_KEY': os.getenv("GEMINI_API_KEY"),   # User yours please...
         'CHAT_MODEL': os.getenv('TUTOR_MODEL', 'models/gemini-2.0-flash'),
         'EMBEDDING_MODEL': os.getenv('EMBEDDING_MODEL', 'models/embedding-001'),
         'DATA_DIR': base_dir / 'data',                                              # file path as args in ingest.py

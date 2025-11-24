@@ -12,7 +12,7 @@ class DiaryPsychologistAdvisor:
     def __init__(self, api_key: str = None, model: str = "models/gemini-2.0-flash"):
         # Use environment variable for API key if not provided
         if api_key is None:
-            api_key = os.getenv("GEMINI_API_KEY", "AIzaSyBAYsk20ZEoCuyi-8K4a8aCwO18GHGxWko")
+            api_key=os.getenv("GEMINI_API_KEY")
         
         if not api_key:
             raise ValueError("Gemini API key is required")
