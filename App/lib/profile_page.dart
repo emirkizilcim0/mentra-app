@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:mentra_app/mbti/result_screen.dart';
 import 'home_page.dart';
 
 String getZodiac(DateTime date) {
@@ -298,13 +299,33 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              mbtiType.isNotEmpty
-                                  ? "$mbtiType - $mbtiTitle"
-                                  : mbtiTitle,
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
+                            InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ResultScreen(
+                                      scores: const {},
+                                      onRetakeTest: () {
+                                        Navigator.pop(context);
+                                        Navigator.pushNamed(
+                                          context,
+                                          "/testPage",
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                mbtiType.isNotEmpty
+                                    ? "$mbtiType - $mbtiTitle"
+                                    : mbtiTitle,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 6),

@@ -13,6 +13,7 @@ import 'test_page.dart';
 import 'info_page.dart';
 import 'mbti/result_screen.dart';
 import 'mbti/personality_data.dart';
+import 'bar_widgets/custom_header.dart';
 
 class AppRoutes {
   static final Map<String, WidgetBuilder> routes = {
@@ -24,6 +25,7 @@ class AppRoutes {
     '/testPage': (context) => const MbtiTestPage(),
     '/chatPage': (context) => const ChatPage(),
     '/diaryWrite': (context) => const DiaryWritePage(),
+    '/MyCustomFont': (context) => const CustomHeader(),
     '/diaryDetail': (context) {
       final args =
           ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
@@ -31,13 +33,6 @@ class AppRoutes {
     },
     '/infoPage': (context) => const InfoPage(),
     '/resultPage': (context) => ResultScreen(
-      result: PersonalityResult(
-        type: 'ENFP',
-        title: 'The Campaigner',
-        description:
-            'Enthusiastic, creative, and sociable free spirits, who can always find a reason to smile.',
-        color: Colors.orangeAccent,
-      ),
       onRetakeTest: () {
         // Just for testing — go back or show a snackbar
         print("Retake test pressed!");

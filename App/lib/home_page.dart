@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'routes_manager.dart';
-import 'chat_page.dart'; // Need to make it all in routes_manager.dart. It is hard-coded right now.
-import 'profile_page.dart'; // Need to make it all in routes_manager.dart. It is hard-coded right now.
+import 'chat_page.dart';
+import 'profile_page.dart';
 import 'motivational_speeches.dart';
 
 class HomePage extends StatelessWidget {
@@ -14,8 +14,8 @@ class HomePage extends StatelessWidget {
     final now = DateTime.now();
     final month = DateFormat.MMMM().format(now);
     final year = now.year;
-    final dayOfYear = int.parse(DateFormat("D").format(now)); // 1-365/366
-    final speechIndex = dayOfYear % speeches.length; // rotate through list
+    final dayOfYear = int.parse(DateFormat("D").format(now));
+    final speechIndex = dayOfYear % speeches.length;
     final todaySpeech = speeches[speechIndex];
 
     return Scaffold(
@@ -104,7 +104,7 @@ class HomePage extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
-                  // Calendar grid (just for show)
+                  // Calendar grid
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
@@ -138,13 +138,15 @@ class HomePage extends StatelessWidget {
               ),
             ),
 
-            // 📝 Speech Card
-            // Speech Card
+            // 📝 Speech Card - Updated to handle long text
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 child: Container(
-                  padding: const EdgeInsets.all(24),
+                  width: double.infinity,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFFFFF7F7), Color(0xFFFDEDED)],
@@ -160,11 +162,13 @@ class HomePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header section
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Row(
                           children: [
                             const Icon(
                               Icons.auto_fix_high,
@@ -190,26 +194,37 @@ class HomePage extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
-                        Text(
-                          todaySpeech,
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            height: 1.7,
-                            color: Colors.black87,
-                            fontStyle: FontStyle.italic,
+                      ),
+
+                      // Speech content - takes remaining space
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Text(
+                              todaySpeech,
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                height: 1.7,
+                                color: Colors.black87,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              textAlign: TextAlign.left,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
+                      ),
+
+                      // Bottom padding
+                      const SizedBox(height: 24),
+                    ],
                   ),
                 ),
               ),
             ),
-            const Spacer(),
 
-            // ⚙️ Bottom Navigation Bar
+            // ⚙ Bottom Navigation Bar
             Container(
               height: 65,
               decoration: const BoxDecoration(

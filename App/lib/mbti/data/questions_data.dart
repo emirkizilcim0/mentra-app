@@ -1,7 +1,7 @@
 import 'dart:convert';
 import '../models/question.dart';
 
-// Sizin JSON veriniz buraya string olarak yapıştırıldı
+
 const String mbtiJsonString = r'''
 [
   {
