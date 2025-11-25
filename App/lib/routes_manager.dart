@@ -26,6 +26,7 @@ class AppRoutes {
     '/chatPage': (context) => const ChatPage(),
     '/diaryWrite': (context) => const DiaryWritePage(),
     '/MyCustomFont': (context) => const CustomHeader(),
+    '/splash': (context) => const SplashPage(),
     '/diaryDetail': (context) {
       final args =
           ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;

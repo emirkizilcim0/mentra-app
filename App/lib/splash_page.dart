@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -8,67 +9,137 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+        // 📢 Burayı değiştirdik!
+        with
+        TickerProviderStateMixin {
+  late AnimationController _logoController;
+  late Animation<double> _scaleAnimation;
+
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  late AnimationController _textController;
+  late Animation<int> _textAnimation;
+
+  final String _fullWord = "Mentra";
+  final String _animatedPart = "entra";
 
   @override
   void initState() {
     super.initState();
 
-    // Fade-in animation (1.5 seconds)
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
+    // 1. FADE-IN ANİMASYONU
+    _fadeController = AnimationController(
+      vsync: this, // Artık TickerProviderStateMixin tarafından destekleniyor
+      duration: const Duration(milliseconds: 1000),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeIn,
+    );
+    _fadeController.forward();
+
+    // 2. LOGO BÜYÜYÜP KÜÇÜLME ANİMASYONU
+    _logoController = AnimationController(
+      vsync: this, // Artık TickerProviderStateMixin tarafından destekleniyor
+      duration: const Duration(milliseconds: 800),
     );
 
-    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _logoController, curve: Curves.easeInOut),
+    );
 
-    _controller.forward();
+    _logoController.repeat(reverse: true);
+
+    // 3. YAZI YAZDIRMA ANİMASYONU
+    _textController = AnimationController(
+      vsync: this,
+      duration: const Duration(
+        milliseconds: 1500,
+      ), // Yazdırma süresi: 1.5 saniye
+    );
+
+    // 0'dan, animasyon yapılacak kısmın uzunluğuna (5) kadar sayar.
+    _textAnimation = IntTween(
+      begin: 0,
+      end: _animatedPart.length,
+    ).animate(CurvedAnimation(parent: _textController, curve: Curves.linear));
+
+    // Animasyonu başlat
+    _textController.repeat();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _logoController.dispose();
+    _fadeController.dispose();
+    _textController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // you can change this to your theme color
+      backgroundColor: const Color.fromARGB(200, 72, 49, 95),
       body: Center(
         child: FadeTransition(
-          opacity: _animation,
+          opacity: _fadeAnimation,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // YOUR LOGO
-              Image.asset(
-                'assets/mentra_logo.jpg', // make sure this file exists
-                width: 150,
-                height: 150,
+              AnimatedBuilder(
+                animation: _logoController,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _scaleAnimation.value,
+                    child: Image.asset(
+                      'assets/logo.png',
+                      width: 300,
+                      height: 300,
+                    ),
+                  );
+                },
+              ),
+
+              // MENTRA YAZISI VE YAZDIRMA ANİMASYONU
+              AnimatedBuilder(
+                animation: _textController,
+                builder: (context, child) {
+                  // Animasyonun o anki değerine (0'dan 5'e) göre alt kelimeyi al.
+                  final int charCount = _textAnimation.value;
+                  final String currentSuffix = _animatedPart.substring(
+                    0,
+                    charCount,
+                  );
+                  return Row(
+                    mainAxisSize: MainAxisSize
+                        .min, // Row'un kendini içeriğe göre küçültmesini sağlar
+                    children: [
+                      // Sabit 'M' harfi
+                      Text(
+                        _fullWord[0],
+                        style: GoogleFonts.pacifico(
+                          fontSize: 40,
+                          color: Color.fromARGB(221, 248, 248, 248),
+                        ),
+                      ),
+
+                      // Animasyonlu 'entra' kısmı
+                      Text(
+                        currentSuffix, // Harfler sağa doğru eklenir
+                        style: GoogleFonts.pacifico(
+                          fontSize: 40,
+                          color: const Color.fromARGB(221, 255, 254, 254),
+                        ),
+                      ),
+                    ],
+                  );
+
+                  // 'M' harfini sabit tutup, kalan kısmı animasyonlu olarak ekle
+                },
               ),
 
               const SizedBox(height: 20),
-
-              // APP NAME
-              const Text(
-                'Mentra',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // Small loading text
-              const Text(
-                'Loading...',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
             ],
           ),
         ),
