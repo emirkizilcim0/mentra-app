@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:mentra_app/splash_page.dart';
 import 'firebase_options.dart';
 import 'routes_manager.dart'; // Import the routes manager
 import 'package:http/http.dart' as http;
@@ -24,7 +25,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      initialRoute: '/splash',
+      initialRoute: '/',
       routes: AppRoutes.routes,
     );
   }

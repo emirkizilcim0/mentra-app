@@ -67,7 +67,7 @@ class ResultScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Test Sonucunuz'),
+        title: const Text('Test Result'),
         backgroundColor: finalResult.color.withOpacity(0.8),
         automaticallyImplyLeading: false,
       ),

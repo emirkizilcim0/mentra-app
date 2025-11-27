@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mentra_app/login_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -24,6 +27,31 @@ class _SplashPageState extends State<SplashPage>
   final String _fullWord = "Mentra";
   final String _animatedPart = "entra";
 
+  void _startLoadingAndNavigate() async {
+    // 1. Minimum animasyon süresini belirle (Metin animasyonu 1.5 saniye sürdüğü için)
+    const Duration minDuration = Duration(milliseconds: 1500);
+
+    // 2. Eş zamansız yükleme/kontrol işlemlerini burada yap
+    // Örneğin, yetkilendirme kontrolü veya veri yükleme:
+    Future<void> loadingTasks = Future.wait([
+      // Örnek: Gerçek bir asenkron görev (örneğin SharedPreferences.getInstance() gibi)
+      Future.delayed(const Duration(milliseconds: 500)),
+      // Auth kontrolü, veri çekme vb. ek asenkron işlemler burada yer almalı.
+    ]);
+
+    // 3. Yükleme görevlerinin ve minimum animasyon süresinin (1.5 saniye) bitmesini bekle
+    // Bu, hem işlemlerin bitmesini hem de animasyonun tamamen oynanmasını garanti eder.
+    await Future.wait([
+      loadingTasks,
+      minDuration.delayed, // Timer yerine Future.delayed kullanıldı.
+    ]);
+
+    // 4. Eğer widget hala ekrandaysa (mounted) ve animasyon tamamlanmadıysa (ki bu dinleyici
+    // ile kontrol ediliyor), güvenli bir geçiş yap.
+    // NOT: Sizin kodunuzdaki geçiş zaten _textController.addStatusListener içinde.
+    // Bu metod sadece asenkron yüklemeleri yönetmek için kullanıldı.
+  }
+
   @override
   void initState() {
     super.initState();
@@ -31,7 +59,7 @@ class _SplashPageState extends State<SplashPage>
     // 1. FADE-IN ANİMASYONU
     _fadeController = AnimationController(
       vsync: this, // Artık TickerProviderStateMixin tarafından destekleniyor
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(seconds: 1),
     );
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
@@ -66,11 +94,30 @@ class _SplashPageState extends State<SplashPage>
     ).animate(CurvedAnimation(parent: _textController, curve: Curves.linear));
 
     // Animasyonu başlat
-    _textController.repeat();
+    _textController.forward();
+
+    _textController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        // Widget hala ağaçtaysa ve sayfadan çıkılmamışsa geçişi yap
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  const LoginPage(), // LoginScreen'i burada kullanın
+            ),
+          );
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
+    _logoController.stop();
+    _fadeController.stop();
+    _textController.stop();
+
     _logoController.dispose();
     _fadeController.dispose();
     _textController.dispose();
@@ -146,4 +193,8 @@ class _SplashPageState extends State<SplashPage>
       ),
     );
   }
+}
+
+extension on Duration {
+  Future get delayed => Future.delayed(this);
 }

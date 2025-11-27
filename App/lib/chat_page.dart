@@ -7,9 +7,15 @@ import 'profile_page.dart';
 import 'diary_write_page.dart';
 import 'diary_detail_page.dart';
 import 'services/diary_service.dart';
+import 'package:intl/intl.dart'; // Tarih formatlama için eklendi
 
+// Parametre alabilmesi için StatelessWidget yerine StatefulWidget'a dönüştürülmüştü.
+// Şimdi parametreyi ekliyoruz.
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  // HomePage'den gönderilen seçili tarih (opsiyonel yapıyoruz, normalde null da gelebilir)
+  final DateTime? selectedDate;
+
+  const ChatPage({super.key, this.selectedDate});
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -34,6 +40,7 @@ class _ChatPageState extends State<ChatPage> {
     super.initState();
     _loadUserData();
     _loadDiaryEntries();
+    // NOT: _loadDiaryEntries() bittiğinde otomatik açma işlemi tetiklenecek
   }
 
   // Load user data from Firebase
@@ -78,11 +85,133 @@ class _ChatPageState extends State<ChatPage> {
         diaryEntries = entries;
         isLoading = false;
       });
+
+      // === YENİ EK: Yükleme bittikten sonra otomatik açma işlemini kontrol et ===
+      _checkForAutoOpen();
     } catch (e) {
       print('Error loading diary entries: $e');
       setState(() {
         isLoading = false;
         errorMessage = 'Failed to load diaries. Please check your connection.';
+      });
+    }
+  }
+
+  // === YENİ POP-UP FONKSİYONU: Birden fazla günlük varsa seçim ekranı açar ===
+  void _showDiarySelectionPopup(
+    BuildContext context,
+    List<Map<String, dynamic>> entries,
+  ) {
+    // entries listesinin boş olmadığını varsayıyoruz.
+    final date = entries.first['formattedDate'] ?? 'Selected Day';
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Dairy Choice: $date',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: entries.asMap().entries.map((entryItem) {
+                final index = entryItem.key;
+                final entry = entryItem.value;
+
+                // Başlık veya içerik önizlemesi oluştur
+                final contentPreview = entry['content'].toString().isNotEmpty
+                    ? '${entry['content'].toString().substring(0, entry['content'].toString().length > 50 ? 50 : entry['content'].toString().length)}...'
+                    : 'İçerik yok';
+
+                final entryTitle =
+                    entry['title'] ??
+                    'Giriş #${index + 1}'; // Eğer title yoksa numara kullan
+
+                return Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(
+                        Icons.note_alt_outlined,
+                        color: Colors.blueGrey.shade700,
+                      ),
+                      title: Text(
+                        entryTitle,
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text(contentPreview),
+                      onTap: () {
+                        Navigator.of(context).pop(); // Seçim pop-up'ını kapat
+                        _openDiaryDetail(entry); // Seçilen günlüğü aç
+                      },
+                    ),
+                    if (index < entries.length - 1) const Divider(height: 1),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text(
+                'Close',
+                style: GoogleFonts.poppins(color: Colors.redAccent),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // === GÜNCELLENMİŞ _checkForAutoOpen: Tek/Çoklu günlük kontrolü yapar ===
+  void _checkForAutoOpen() {
+    if (widget.selectedDate == null) {
+      return; // Dışarıdan tarih gelmediyse işlem yapma
+    }
+
+    final targetDate = widget.selectedDate!;
+
+    // DiaryService'deki formatı tam olarak yeniden oluşturuyoruz.
+    // DiaryService'deki format: 'Ddd, dd Mmm yyyy' (Örn: Wed, 25 Nov 2025)
+    final weekday = _getWeekday(targetDate.weekday);
+    final month = _getMonth(targetDate.month);
+    final targetDateString =
+        '$weekday, ${targetDate.day} $month ${targetDate.year}';
+
+    // O güne ait tüm günlükleri filtrele
+    final dailyEntries = diaryEntries
+        .where((entry) => entry['formattedDate'] == targetDateString)
+        .toList();
+
+    if (dailyEntries.isEmpty) {
+      // 0 kayıt varsa: Hata mesajı göster
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$targetDateString için bir günlük bulunamadı.'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      });
+    } else if (dailyEntries.length == 1) {
+      // 1 kayıt varsa: Doğrudan o günlüğü aç
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openDiaryDetail(dailyEntries.first);
+      });
+    } else {
+      // Birden fazla (>1) kayıt varsa: Seçim pop-up'ını aç
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showDiarySelectionPopup(context, dailyEntries);
       });
     }
   }
@@ -410,7 +539,7 @@ class _ChatPageState extends State<ChatPage> {
                                     ),
                                     child: InkWell(
                                       onTap: () => _getAdviceForDiary(entry),
-                                      child: Row(
+                                      child: const Row(
                                         children: [
                                           Icon(
                                             Icons.psychology,
@@ -430,7 +559,7 @@ class _ChatPageState extends State<ChatPage> {
                                       ),
                                     ),
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: 8),
                                   // Mood indicator
                                   if (entry['mood'] != null &&
                                       entry['mood'].isNotEmpty)
@@ -515,6 +644,31 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+  }
+
+  // === YENİ EK: Birden fazla günlük varsa seçim pop-up'ını açan metot ===
+
+  String _getWeekday(int weekday) {
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return weekdays[weekday - 1];
+  }
+
+  String _getMonth(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month - 1];
   }
 
   Color _getMoodColor(String mood) {
