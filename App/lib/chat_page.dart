@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -375,273 +377,333 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFE8F4F9),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 🩶 Top Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Mentra",
-                    style: GoogleFonts.pacifico(
-                      fontSize: 28,
-                      color: Colors.black87,
-                    ),
+      body: Stack(
+        children: [
+          // Katman 1: Ana İçerik
+          Column(
+            children: [
+              // 1. SABİT ÜST KISIM (Top Bar) - SafeArea ile değiştirildi
+              SafeArea(
+                bottom: false,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.psychology_outlined),
-                    onPressed: _getPsychologicalAdvice,
-                    tooltip: 'Get Psychological Analysis',
-                  ),
-                ],
-              ),
-            ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Mentra Yazısı - Normal Container
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          "Mentra",
+                          style: GoogleFonts.pacifico(
+                            fontSize: 28,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
 
-            // ✍️ Write Diary Button
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(40),
+                      // Psychology Butonu - Blur efekti ile
+                    ],
+                  ),
+                ),
               ),
-              child: InkWell(
-                onTap: _openDiaryWritePage,
+
+              // ✍️ Write Diary Button
+              Container(
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
+                ),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(40),
+                ),
+                child: InkWell(
+                  onTap: _openDiaryWritePage,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Write diary",
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.edit, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ),
+
+              // 🕓 Previous Diaries Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 25.0),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      "Write diary",
+                      "Your previous diaries",
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    const Icon(Icons.edit, color: Colors.white),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _loadDiaryEntries,
+                      tooltip: 'Refresh diaries',
+                    ),
                   ],
                 ),
               ),
-            ),
 
-            // 🕓 Previous Diaries Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 25.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Your previous diaries",
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                    ),
+              const SizedBox(height: 10),
+
+              // Error message
+              if (errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 25.0),
+                  child: Text(
+                    errorMessage!,
+                    style: const TextStyle(color: Colors.red, fontSize: 14),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _loadDiaryEntries,
-                    tooltip: 'Refresh diaries',
+                ),
+
+              // 📅 List of previous diary dates
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 25,
+                    vertical: 10,
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // Error message
-            if (errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 25.0),
-                child: Text(
-                  errorMessage!,
-                  style: const TextStyle(color: Colors.red, fontSize: 14),
-                ),
-              ),
-
-            // 📅 List of previous diary dates
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 25,
-                  vertical: 10,
-                ),
-                child: isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : diaryEntries.isEmpty
-                    ? Column(
-                        children: [
-                          const SizedBox(height: 50),
-                          Icon(
-                            Icons.edit_note,
-                            size: 64,
-                            color: Colors.grey.shade400,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            "No diary entries yet.\nStart writing your first diary!",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 16,
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : diaryEntries.isEmpty
+                      ? Column(
+                          children: [
+                            const SizedBox(height: 50),
+                            Icon(
+                              Icons.edit_note,
+                              size: 64,
+                              color: Colors.grey.shade400,
                             ),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        children: diaryEntries.map((entry) {
-                          return Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                              horizontal: 16,
+                            const SizedBox(height: 16),
+                            Text(
+                              "No diary entries yet.\nStart writing your first diary!",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 16,
+                              ),
                             ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(30),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black12,
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: InkWell(
-                              onTap: () => _openDiaryDetail(entry),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      entry['formattedDate'] ?? 'No date',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 15,
-                                        color: Colors.black87,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
+                          ],
+                        )
+                      : Column(
+                          children: diaryEntries.map((entry) {
+                            return Container(
+                              width: double.infinity,
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black12,
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
                                   ),
-                                  // Get Advice Button
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 12,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.purple.shade500,
-                                      borderRadius: BorderRadius.circular(15),
-                                    ),
-                                    child: InkWell(
-                                      onTap: () => _getAdviceForDiary(entry),
-                                      child: const Row(
-                                        children: [
-                                          Icon(
-                                            Icons.psychology,
-                                            size: 12,
-                                            color: Colors.white,
-                                          ),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            'Get Advice',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  // Mood indicator
-                                  if (entry['mood'] != null &&
-                                      entry['mood'].isNotEmpty)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _getMoodColor(entry['mood']),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
+                                ],
+                              ),
+                              child: InkWell(
+                                onTap: () => _openDiaryDetail(entry),
+                                child: Row(
+                                  children: [
+                                    Expanded(
                                       child: Text(
-                                        entry['mood'],
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white,
+                                        entry['formattedDate'] ?? 'No date',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 15,
+                                          color: Colors.black87,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ),
-                                ],
+                                    // Get Advice Button
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.purple.shade500,
+                                        borderRadius: BorderRadius.circular(15),
+                                      ),
+                                      child: InkWell(
+                                        onTap: () => _getAdviceForDiary(entry),
+                                        child: const Row(
+                                          children: [
+                                            Icon(
+                                              Icons.psychology,
+                                              size: 12,
+                                              color: Colors.white,
+                                            ),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Get Advice',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Mood indicator
+                                    if (entry['mood'] != null &&
+                                        entry['mood'].isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _getMoodColor(entry['mood']),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          entry['mood'],
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                            );
+                          }).toList(),
+                        ),
+                ),
               ),
-            ),
 
-            // ⚙️ Bottom Navigation Bar
-            Container(
-              height: 65,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFFCAE4EB), Color(0xFFE8F4F9)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.home_outlined,
-                      size: 28,
-                      color: Colors.black,
+              // Alt boşluk - Bottom Navigation için yer açıyoruz
+              const SizedBox(height: 80),
+            ],
+          ),
+
+          // =========================================================
+          // 3. SABİT ALT KISIM (FAB NAVİGASYON BUTONLARI - 4 TANE)
+          // =========================================================
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
                     ),
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const HomePage(),
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.person_outline,
-                      size: 28,
-                      color: Colors.black,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.5),
+                        width: 1,
+                      ),
                     ),
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ProfilePage(),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // 1. Home Button
+                        IconButton(
+                          icon: const Icon(Icons.home, color: Colors.black87),
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const HomePage(),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
+
+                        // 2. Advice Button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.lightbulb_outline,
+                            color: Colors.black87,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AdvicePage(),
+                              ),
+                            );
+                          },
+                        ),
+
+                        // 3. Mood Track Button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.emoji_emotions_outlined,
+                            color: Colors.black87,
+                          ),
+                          onPressed: () {
+                            // Mood Track Sayfasına yönlendirme
+                          },
+                        ),
+
+                        // 4. Profile Button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.person_outline,
+                            color: Colors.black87,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfilePage(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

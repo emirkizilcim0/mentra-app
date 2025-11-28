@@ -1,3 +1,4 @@
+import 'dart:ui'; // BackdropFilter için gereklidir
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -28,8 +29,9 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // === 1. Günlüğü Olan Günlerin Durumunu Tutmak İçin Map  ===
-  // Key: YYYY-MM-DD. Value: 'written', 'advised', veya 'none'
   Map<String, String> _daysWithDiaryStatus = {};
+
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -37,11 +39,15 @@ class _HomePageState extends State<HomePage> {
     _loadDiaryAvailabilityStatus();
   }
 
-  // === 2. Tüm günlükleri ve Advice durumlarını çek (GÜNCELLENDİ) ===
+  // === 2. Tüm günlükleri ve Advice durumlarını çek (DÜZELTİLDİ) ===
   Future<void> _loadDiaryAvailabilityStatus() async {
+    // YÜKLEMEYİ BAŞLAT
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       final entries = await DiaryService.getDiaryEntries();
-      // Advice geçmişini çekiyoruz (Service'te var olduğunu varsayıyoruz)
       final analyses = await DiaryService.getAnalysisHistory();
 
       final Map<String, String> days = {};
@@ -71,8 +77,10 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
+      // Veriler başarıyla çekildi ve haritalandı
       setState(() {
         _daysWithDiaryStatus = days;
+        _isLoading = false; // YÜKLEMEYİ BİTİR
       });
 
       print('DEBUG: ${days.length} diary statuses loaded.');
@@ -80,6 +88,10 @@ class _HomePageState extends State<HomePage> {
       print(
         'CRITICAL ERROR! Exception occurred while loading diary status: $e',
       );
+      // Hata olsa bile yüklemeyi bitir
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -262,6 +274,23 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // --- Floating Action Button Helper Fonksiyonu ---
+  Widget _buildFab({
+    required IconData icon,
+    required VoidCallback onPressed,
+    Color color = const Color(0xFFB3E5FC),
+    double size = 30,
+  }) {
+    return FloatingActionButton(
+      heroTag: icon.codePoint.toString(), // Her FAB için benzersiz tag gerekli
+      shape: const CircleBorder(),
+      backgroundColor: color,
+      mini: size < 40, // Küçük FAB için mini: true kullanırız
+      onPressed: onPressed,
+      child: Icon(icon, size: size * 0.9, color: Colors.black87),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -280,296 +309,423 @@ class _HomePageState extends State<HomePage> {
 
     final blankSpaces = dayOfWeek % 7;
 
+    final bottomPadding = 90.0;
+
     return Scaffold(
       backgroundColor: const Color(0xFFE8F4F9),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 🩶 Top Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Mentra",
-                    style: GoogleFonts.pacifico(
-                      fontSize: 28,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const ChatPage(selectedDate: null),
-                        ),
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.chat_bubble_outline,
-                      color: Colors.black87,
-                      size: 26,
-                    ),
-                  ),
-                ],
-              ),
-            ),
 
-            // 🗓 Calendar Card
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.black12, width: 1.5),
-              ),
-              child: Column(
-                children: [
-                  Row(
+      body: Stack(
+        children: [
+          // Katman 1: Ana İçerik (Sabit Üst ve Kaydırılabilir Orta Kısım)
+          Column(
+            children: [
+              // 1. SABİT ÜST KISIM (Top Bar)
+              SafeArea(
+                bottom: false,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        "$month",
-                        style: GoogleFonts.poppins(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
+                      // Mentra Yazısı - Artık normal Container
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
                         ),
-                      ),
-                      Text(
-                        "$year",
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Days of week (SUN, MON, TUE...)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
-                        .map(
-                          (d) => Text(
-                            d,
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Calendar grid (GÜNCELLENDİ)
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    // Toplam ızgara elemanı: Boşluklar + Günler
-                    children: List.generate(blankSpaces + lastDayOfMonth, (
-                      index,
-                    ) {
-                      // Eğer index boşluk sayısından küçükse, bu bir boş kutudur.
-                      if (index < blankSpaces) {
-                        return const SizedBox(
-                          width: 38, // Gün kutusu ile aynı genişlik
-                          height: 38,
-                        );
-                      }
-
-                      // Gerçek gün numarasını hesapla
-                      final day = index + 1 - blankSpaces;
-                      final isToday =
-                          day == now.day &&
-                          year == now.year &&
-                          (now.month == monthIndex + 1);
-
-                      final String diaryStatus = _getDiaryStatus(
-                        day,
-                        monthIndex,
-                        year,
-                      );
-                      final bool hasDiaryForDay = diaryStatus != 'none';
-
-                      return GestureDetector(
-                        onTap: hasDiaryForDay
-                            ? () {
-                                _showDayDetailsPopup(
-                                  context,
-                                  day,
-                                  monthIndex,
-                                  year,
-                                );
-                              }
-                            : null,
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: isToday
-                                ? const Color(0xFFB3E5FC)
-                                : (diaryStatus == 'advised')
-                                ? Colors
-                                      .deepPurple
-                                      .shade400 // Advice Varsa: Koyu Mor
-                                : (diaryStatus == 'written')
-                                ? Colors
-                                      .purple
-                                      .shade200 // Sadece Yazılıysa: Açık Mor
-                                : Colors.white, // Günlük yoksa: Beyaz
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.black26),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            "$day",
-                            style: GoogleFonts.poppins(
-                              fontWeight: isToday
-                                  ? FontWeight.bold
-                                  : FontWeight.w400,
-
-                              color: (diaryStatus == 'advised')
-                                  ? Colors.white
-                                  : Colors.black87,
-                            ),
+                        child: Text(
+                          "Mentra",
+                          style: GoogleFonts.pacifico(
+                            fontSize: 28,
+                            color: Colors.black87,
                           ),
                         ),
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            ),
-
-            // 📝 Speech Card - Updated to handle long text
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFF7F7), Color(0xFFFDEDED)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header section
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.auto_fix_high,
-                              color: Colors.black87,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              "Daily Motivation",
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 18,
-                                color: Colors.black87,
+                      // Chat Butonu - Blur efekti ile
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.5),
+                                width: 1,
                               ),
                             ),
-                            const Spacer(),
-                            Text(
-                              "$month ${now.day}, $year",
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w400,
-                                fontSize: 14,
-                                color: Colors.black54,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
+                                color: Colors.black87,
+                                size: 24,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const ChatPage(selectedDate: null),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // 2. KAYDIRILABİLİR ORTA KISIM
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: bottomPadding),
+                  child: Column(
+                    children: [
+                      // 🗓 Calendar Card
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.black12, width: 1.5),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "$month",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                Text(
+                                  "$year",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            // Days of week (SUN, MON, TUE...)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children:
+                                  [
+                                        "SUN",
+                                        "MON",
+                                        "TUE",
+                                        "WED",
+                                        "THU",
+                                        "FRI",
+                                        "SAT",
+                                      ]
+                                      .map(
+                                        (d) => Text(
+                                          d,
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Calendar grid
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: List.generate(
+                                blankSpaces + lastDayOfMonth,
+                                (index) {
+                                  if (index < blankSpaces) {
+                                    return const SizedBox(
+                                      width: 38,
+                                      height: 38,
+                                    );
+                                  }
+
+                                  final day = index + 1 - blankSpaces;
+                                  final isToday =
+                                      day == now.day &&
+                                      year == now.year &&
+                                      (now.month == monthIndex + 1);
+
+                                  final String diaryStatus = _getDiaryStatus(
+                                    day,
+                                    monthIndex,
+                                    year,
+                                  );
+                                  final bool hasDiaryForDay =
+                                      diaryStatus != 'none';
+
+                                  return GestureDetector(
+                                    onTap: hasDiaryForDay
+                                        ? () {
+                                            _showDayDetailsPopup(
+                                              context,
+                                              day,
+                                              monthIndex,
+                                              year,
+                                            );
+                                          }
+                                        : null,
+                                    child: Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: isToday
+                                            ? const Color(0xFFB3E5FC)
+                                            : (diaryStatus == 'advised')
+                                            ? Colors.deepPurple.shade400
+                                            : (diaryStatus == 'written')
+                                            ? Colors.purple.shade200
+                                            : Colors.white,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: Colors.black26,
+                                        ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        "$day",
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: isToday
+                                              ? FontWeight.bold
+                                              : FontWeight.w400,
+                                          color: (diaryStatus == 'advised')
+                                              ? Colors.white
+                                              : Colors.black87,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ],
                         ),
                       ),
 
-                      // Speech content - takes remaining space
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            child: Text(
-                              todaySpeech,
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                height: 1.7,
-                                color: Colors.black87,
-                                fontStyle: FontStyle.italic,
-                              ),
-                              textAlign: TextAlign.left,
+                      // 📝 Speech Card
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFFF7F7), Color(0xFFFDEDED)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 8,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header section
+                              Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.auto_fix_high,
+                                      color: Colors.black87,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "Daily Motivation",
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 18,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      "$month ${now.day}, $year",
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.w400,
+                                        fontSize: 14,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Speech content - takes remaining space
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                child: Text(
+                                  todaySpeech,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    height: 1.7,
+                                    color: Colors.black87,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  textAlign: TextAlign.left,
+                                ),
+                              ),
+
+                              // Bottom padding
+                              const SizedBox(height: 24),
+                            ],
                           ),
                         ),
                       ),
-
-                      // Bottom padding
-                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
               ),
-            ),
+            ],
+          ),
 
-            // ⚙ Bottom Navigation Bar
-            Container(
-              height: 65,
-              decoration: const BoxDecoration(
-                color: Color(0xFFD0E8EF),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
+          // =========================================================
+          // 3. SABİT ALT KISIM (FAB NAVİGASYON BUTONLARI - 4 TANE)
+          // =========================================================
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // 1. Home Button
+                        IconButton(
+                          icon: const Icon(Icons.home, color: Colors.black87),
+                          onPressed: () {},
+                        ),
+
+                        // 2. Advice Button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.lightbulb_outline,
+                            color: Colors.black87,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const AdvicePage(),
+                              ),
+                            );
+                          },
+                        ),
+
+                        // 3. Mood Track Button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.emoji_emotions_outlined,
+                            color: Colors.black87,
+                          ),
+                          onPressed: () {
+                            // Mood Track Sayfasına yönlendirme
+                          },
+                        ),
+
+                        // 4. Profile Button
+                        IconButton(
+                          icon: const Icon(
+                            Icons.person_outline,
+                            color: Colors.black87,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfilePage(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.home, size: 28, color: Colors.black),
-                    onPressed: () {},
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.person_outline,
-                      size: 28,
-                      color: Colors.black,
-                    ),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ProfilePage(),
+            ),
+          ),
+
+          // Katman 4: Loading Overlay (Sadece _isLoading true iken görünür)
+          if (_isLoading)
+            AbsorbPointer(
+              absorbing: true,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                child: Container(
+                  color: Colors.white.withOpacity(0.7),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset('assets/logo.png', width: 300, height: 300),
+                        const SizedBox(height: 20),
+                        Text(
+                          "Mentra Yükleniyor...",
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

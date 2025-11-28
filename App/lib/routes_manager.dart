@@ -13,7 +13,6 @@ import 'test_page.dart';
 import 'info_page.dart';
 import 'mbti/result_screen.dart';
 import 'mbti/personality_data.dart';
-import 'bar_widgets/custom_header.dart';
 
 class AppRoutes {
   static final Map<String, WidgetBuilder> routes = {
@@ -25,7 +24,6 @@ class AppRoutes {
     '/testPage': (context) => const MbtiTestPage(),
     '/chatPage': (context) => const ChatPage(),
     '/diaryWrite': (context) => const DiaryWritePage(),
-    '/MyCustomFont': (context) => const CustomHeader(),
 
     '/diaryDetail': (context) {
       final args =
