@@ -6,19 +6,270 @@ import 'package:intl/intl.dart';
 import 'routes_manager.dart';
 import 'chat_page.dart';
 import 'profile_page.dart';
+import 'mood_graph_page.dart';
 import 'motivational_speeches.dart';
 import 'services/diary_service.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
+import 'advice_detail_page.dart';
 
 // Varsayılan AdvicePage tanımı
-class AdvicePage extends StatelessWidget {
+class AdvicePage extends StatefulWidget {
   const AdvicePage({super.key});
   @override
+  State<AdvicePage> createState() => _AdvicePageState();
+}
+
+class _AdvicePageState extends State<AdvicePage> {
+  List<Map<String, dynamic>> analyses = [];
+  bool isLoading = true;
+  String? errorMessage;
+
+  int _estimateHappinessPercent(String text) {
+    if (text.isEmpty) return 50;
+    final lower = text.toLowerCase();
+    final positives = [
+      'happy',
+      'joy',
+      'great',
+      'good',
+      'love',
+      'wonderful',
+      'optimistic',
+      'positive',
+      'success',
+      'calm',
+      'peace',
+      'glad',
+      'smile',
+    ];
+    final negatives = [
+      'sad',
+      'anxious',
+      'worry',
+      'stress',
+      'angry',
+      'bad',
+      'pain',
+      'cry',
+      'depress',
+      'fear',
+      'lonely',
+      'tired',
+      'hopeless',
+    ];
+    int p = 0;
+    int n = 0;
+    for (final w in positives) {
+      if (lower.contains(w)) p++;
+    }
+    for (final w in negatives) {
+      if (lower.contains(w)) n++;
+    }
+    final score = (p - n).clamp(-10, 10);
+    final percent = ((score + 10) * 5).toInt();
+    return percent.clamp(0, 100);
+  }
+
+  String _emojiFor(int percent) {
+    if (percent >= 75) return '😄';
+    if (percent >= 50) return '😐';
+    if (percent >= 25) return '😕';
+    return '😭';
+  }
+
+  Color _cardFill(int percent, bool dark) {
+    if (percent >= 75) {
+      return dark
+          ? Colors.green.shade900.withOpacity(0.25)
+          : Colors.green.shade50;
+    } else if (percent >= 50) {
+      return dark
+          ? Colors.amber.shade900.withOpacity(0.25)
+          : Colors.amber.shade50;
+    } else if (percent >= 25) {
+      return dark
+          ? Colors.orange.shade900.withOpacity(0.25)
+          : Colors.orange.shade50;
+    } else {
+      return dark ? Colors.red.shade900.withOpacity(0.25) : Colors.red.shade50;
+    }
+  }
+
+  Color _cardBorder(int percent, bool dark) {
+    if (percent >= 75) {
+      return dark ? Colors.green.shade700 : Colors.green.shade400;
+    } else if (percent >= 50) {
+      return dark ? Colors.amber.shade700 : Colors.amber.shade400;
+    } else if (percent >= 25) {
+      return dark ? Colors.orange.shade700 : Colors.orange.shade400;
+    } else {
+      return dark ? Colors.red.shade700 : Colors.red.shade400;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAnalyses();
+  }
+
+  Future<void> _loadAnalyses() async {
+    try {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+      final items = await DiaryService.getAnalysisHistory(limit: 50);
+      setState(() {
+        analyses = items;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+        errorMessage = 'Tavsiyeler yüklenemedi.';
+      });
+    }
+  }
+
+  String _titleFromAdvice(String advice) {
+    final text = advice.trim();
+    if (text.isEmpty) return 'Advice';
+    final dot = text.indexOf('.');
+    final first = dot > 0 ? text.substring(0, dot) : text.split('\n').first;
+    return first.length <= 60 ? first : '${first.substring(0, 60)}...';
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Tavsiye Sayfası')),
-      body: const Center(child: Text('Burada Günlük Tavsiyeler Yer Alacak.')),
+      backgroundColor: themeProvider.isDarkMode
+          ? const Color(0xFF121212)
+          : const Color(0xFFE8F4F9),
+      appBar: AppBar(
+        title: const Text('Advice'),
+        actions: [
+          IconButton(onPressed: _loadAnalyses, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : errorMessage != null
+          ? Center(
+              child: Text(
+                errorMessage!,
+                style: TextStyle(
+                  color: themeProvider.isDarkMode
+                      ? Colors.redAccent[100]
+                      : Colors.redAccent,
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: analyses.length,
+              itemBuilder: (context, index) {
+                final item = analyses[index];
+                final dateText = item['formattedDate'] ?? item['date'] ?? '';
+                final adviceText = item['advice'] ?? '';
+                final title = _titleFromAdvice(adviceText);
+                final percent = _estimateHappinessPercent(adviceText);
+                final emoji = _emojiFor(percent);
+                return InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            AdviceDetailPage(analysisItem: item, title: title),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: themeProvider.isDarkMode
+                          ? const Color(0xFF1E1E1E)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey.shade700
+                            : Colors.black12,
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: themeProvider.isDarkMode
+                              ? Colors.black54
+                              : Colors.black12,
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                dateText,
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: themeProvider.isDarkMode
+                                      ? Colors.white
+                                      : Colors.black,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                  color: themeProvider.isDarkMode
+                                      ? Colors.white70
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: themeProvider.isDarkMode
+                                ? Colors.yellow.shade800
+                                : Colors.yellow.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            emoji,
+                            style: const TextStyle(fontSize: 18),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward_ios, size: 16),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
@@ -34,6 +285,7 @@ class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   // === 1. Günlüğü Olan Günlerin Durumunu Tutmak İçin Map  ===
   Map<String, String> _daysWithDiaryStatus = {};
+  Map<String, int> _happinessPercentByDay = {};
 
   bool _isLoading = true;
 
@@ -70,6 +322,70 @@ class _HomePageState extends State<HomePage>
     _startDotAnimation();
 
     _loadDiaryAvailabilityStatus();
+  }
+
+  int _estimateHappinessPercent(String text) {
+    if (text.isEmpty) return 50;
+    final lower = text.toLowerCase();
+    final positives = [
+      'happy',
+      'joy',
+      'great',
+      'good',
+      'love',
+      'wonderful',
+      'optimistic',
+      'positive',
+      'success',
+      'calm',
+      'peace',
+      'glad',
+      'smile',
+    ];
+    final negatives = [
+      'sad',
+      'anxious',
+      'worry',
+      'stress',
+      'angry',
+      'bad',
+      'pain',
+      'cry',
+      'depress',
+      'fear',
+      'lonely',
+      'tired',
+      'hopeless',
+    ];
+    int p = 0;
+    int n = 0;
+    for (final w in positives) {
+      if (lower.contains(w)) p++;
+    }
+    for (final w in negatives) {
+      if (lower.contains(w)) n++;
+    }
+    final score = (p - n).clamp(-10, 10);
+    final percent = ((score + 10) * 5).toInt();
+    return percent.clamp(0, 100);
+  }
+
+  Color _fillForPercent(int percent, bool dark) {
+    if (percent >= 75) {
+      return dark
+          ? Colors.green.shade900.withOpacity(0.25)
+          : Colors.green.shade50;
+    } else if (percent >= 50) {
+      return dark
+          ? Colors.amber.shade900.withOpacity(0.25)
+          : Colors.amber.shade50;
+    } else if (percent >= 25) {
+      return dark
+          ? Colors.orange.shade900.withOpacity(0.25)
+          : Colors.orange.shade50;
+    } else {
+      return dark ? Colors.red.shade900.withOpacity(0.25) : Colors.red.shade50;
+    }
   }
 
   // 💡 OPTİMİZASYON: Noktaları sırayla gösteren fonksiyon (Manuel sayaç kontrolü)
@@ -116,17 +432,16 @@ class _HomePageState extends State<HomePage>
       final analyses = await DiaryService.getAnalysisHistory();
 
       final Map<String, String> days = {};
+      final Map<String, int> percents = {};
 
-      // Advice alınan günleri topluyoruz (YYYY-MM-DD formatında)
-      Set<String> advisedDays = {};
       for (var analysis in analyses) {
         try {
           final analysisDate = DateTime.parse(analysis['date']);
           final key = DateFormat('yyyy-MM-dd').format(analysisDate);
-          advisedDays.add(key);
-        } catch (_) {
-          // Hata durumunda yoksay
-        }
+          final adviceText = (analysis['advice'] ?? '') as String;
+          final percent = _estimateHappinessPercent(adviceText);
+          percents[key] = percent;
+        } catch (_) {}
       }
 
       for (var entry in entries) {
@@ -134,21 +449,20 @@ class _HomePageState extends State<HomePage>
         final date = DateTime.parse(dateString);
         final key = DateFormat('yyyy-MM-dd').format(date);
 
-        // Önce Advice kontrolü yapılır: Advice varsa Koyu Mor, yoksa Açık Mor
-        if (advisedDays.contains(key)) {
-          days[key] = 'advised'; // Koyu Mor
+        if (percents.containsKey(key)) {
+          days[key] = 'advised';
         } else {
-          days[key] = 'written'; // Açık Mor
+          days[key] = 'written';
         }
       }
 
-      // Veriler başarıyla çekildi ve haritalandı
       setState(() {
         _daysWithDiaryStatus = days;
+        _happinessPercentByDay = percents;
         _isLoading = false;
-        _animationController.stop(); // Yükleme bitti, animasyonu durdur
-        _timer?.cancel(); // 💡 OPTİMİZASYON: Timer'ı durdur
-        _dotCount = 3; // Noktaları sabitle
+        _animationController.stop();
+        _timer?.cancel();
+        _dotCount = 3;
       });
 
       print('DEBUG: ${days.length} diary statuses loaded.');
@@ -171,6 +485,12 @@ class _HomePageState extends State<HomePage>
     final date = DateTime(year, monthIndex + 1, day);
     final key = DateFormat('yyyy-MM-dd').format(date);
     return _daysWithDiaryStatus[key] ?? 'none';
+  }
+
+  int? _getHappinessPercent(int day, int monthIndex, int year) {
+    final date = DateTime(year, monthIndex + 1, day);
+    final key = DateFormat('yyyy-MM-dd').format(date);
+    return _happinessPercentByDay[key];
   }
 
   Future<void> _handleDiarySelection(
@@ -562,6 +882,11 @@ class _HomePageState extends State<HomePage>
                                   );
                                   final bool hasDiaryForDay =
                                       diaryStatus != 'none';
+                                  final int? percent = _getHappinessPercent(
+                                    day,
+                                    monthIndex,
+                                    year,
+                                  );
 
                                   return GestureDetector(
                                     onTap: hasDiaryForDay
@@ -578,15 +903,18 @@ class _HomePageState extends State<HomePage>
                                       width: 38,
                                       height: 38,
                                       decoration: BoxDecoration(
-                                        color: isToday
-                                            ? const Color(0xFFB3E5FC)
-                                            : (diaryStatus == 'advised')
-                                            ? Colors.deepPurple.shade400
-                                            : (diaryStatus == 'written')
-                                            ? Colors.purple.shade200
-                                            : (themeProvider.isDarkMode
-                                                  ? const Color(0xFF2D2D2D)
-                                                  : Colors.white),
+                                        color: percent != null
+                                            ? _fillForPercent(
+                                                percent,
+                                                themeProvider.isDarkMode,
+                                              )
+                                            : (isToday
+                                                  ? const Color(0xFFB3E5FC)
+                                                  : (themeProvider.isDarkMode
+                                                        ? const Color(
+                                                            0xFF2D2D2D,
+                                                          )
+                                                        : Colors.white)),
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
                                           color: themeProvider.isDarkMode
@@ -602,11 +930,9 @@ class _HomePageState extends State<HomePage>
                                           fontWeight: isToday
                                               ? FontWeight.bold
                                               : FontWeight.w400,
-                                          color: (diaryStatus == 'advised')
+                                          color: themeProvider.isDarkMode
                                               ? Colors.white
-                                              : (themeProvider.isDarkMode
-                                                    ? Colors.white
-                                                    : Colors.black87),
+                                              : Colors.black87,
                                         ),
                                       ),
                                     ),
@@ -814,7 +1140,12 @@ class _HomePageState extends State<HomePage>
                           ),
 
                           onPressed: () {
-                            // Mood Track Sayfasına yönlendirme
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const MoodGraphPage(),
+                              ),
+                            );
                           },
                         ),
 

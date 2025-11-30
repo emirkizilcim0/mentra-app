@@ -13,6 +13,7 @@ import 'test_page.dart';
 import 'info_page.dart';
 import 'mbti/result_screen.dart';
 import 'mbti/personality_data.dart';
+import 'mood_graph_page.dart';
 
 class AppRoutes {
   static final Map<String, WidgetBuilder> routes = {
@@ -48,5 +49,6 @@ class AppRoutes {
         'P': 11,
       },
     ),
+    '/moodGraph': (context) => const MoodGraphPage(),
   };
 }

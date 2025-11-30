@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class DiaryWritePage extends StatefulWidget {
   const DiaryWritePage({super.key});
@@ -39,132 +38,138 @@ class _DiaryWritePageState extends State<DiaryWritePage> {
 
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-
     return Scaffold(
-      backgroundColor: themeProvider.isDarkMode
-          ? const Color(0xFF121212) // Dark mode background
-          : Colors.white, // Light mode background
+      backgroundColor: const Color(0xFFFDFBF7),
       appBar: AppBar(
-        backgroundColor: themeProvider.isDarkMode
-            ? const Color(0xFF1E1E1E) // Dark mode appbar
-            : Colors.white, // Light mode appbar
+        backgroundColor: const Color(0xFFFDFBF7),
         elevation: 0,
         leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: themeProvider.isDarkMode ? Colors.white : Colors.black,
-          ),
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           'Write Diary',
-          style: TextStyle(
-            color: themeProvider.isDarkMode ? Colors.white : Colors.black,
-            fontSize: 20,
-            fontWeight: FontWeight.w500,
+          style: GoogleFonts.poppins(
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: _saveDiary,
-            child: Text(
-              'Save',
-              style: TextStyle(
-                color: themeProvider.isDarkMode
-                    ? Colors
-                          .deepPurpleAccent // Dark mode save color
-                    : Colors.deepPurple, // Light mode save color
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ElevatedButton.icon(
+              onPressed: _saveDiary,
+              icon: const Icon(Icons.check, size: 18, color: Colors.white),
+              label: Text(
+                'Save',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade600,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _titleController,
-                decoration: InputDecoration(
-                  hintText: 'Diary Title',
-                  hintStyle: TextStyle(
-                    color: themeProvider.isDarkMode
-                        ? Colors.grey[500] // Dark mode hint
-                        : Colors.grey[400], // Light mode hint
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: themeProvider.isDarkMode
-                      ? Colors
-                            .white // Dark mode text
-                      : Colors.black, // Light mode text
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter a title';
-                  }
-                  return null;
-                },
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Card(
+              elevation: 4,
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
               ),
-              const SizedBox(height: 8),
-              Text(
-                DateFormat('dd MMMM yyyy, HH:mm').format(DateTime.now()),
-                style: TextStyle(
-                  color: themeProvider.isDarkMode
-                      ? Colors.grey[400] // Dark mode date
-                      : Colors.grey[600], // Light mode date
-                  fontSize: 14,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 20,
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 6),
+                      Text(
+                        DateFormat(
+                          'dd MMMM yyyy, HH:mm',
+                        ).format(DateTime.now()),
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: _titleController,
+                        decoration: const InputDecoration(
+                          hintText: 'Title',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Write a title';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _contentController,
+                        decoration: const InputDecoration(
+                          hintText: 'How was your day?',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                        style: GoogleFonts.lato(
+                          fontSize: 16,
+                          color: Colors.black87,
+                          height: 1.7,
+                        ),
+                        maxLines: null,
+                        minLines: 10,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Write something';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: TextFormField(
-                  controller: _contentController,
-                  decoration: InputDecoration(
-                    hintText: 'How was your day? Share your thoughts...',
-                    hintStyle: TextStyle(
-                      color: themeProvider.isDarkMode
-                          ? Colors.grey[500] // Dark mode hint
-                          : Colors.grey[400], // Light mode hint
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: themeProvider.isDarkMode
-                        ? Colors
-                              .white // Dark mode text
-                        : Colors.black87, // Light mode text
-                    height: 1.5,
-                  ),
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please write something about your day';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+// mood özellikleri kaldırıldı

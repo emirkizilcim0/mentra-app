@@ -8,6 +8,7 @@ import 'package:mentra_app/mbti/result_screen.dart';
 import 'home_page.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
+import 'mood_graph_page.dart';
 
 // Diğer kodlarınız aynı kalacak...
 String getZodiac(DateTime date) {
@@ -561,7 +562,12 @@ class _ProfilePageState extends State<ProfilePage> {
                             color: Theme.of(context).colorScheme.onBackground,
                           ),
                           onPressed: () {
-                            // Mood Track Sayfasına yönlendirme
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const MoodGraphPage(),
+                              ),
+                            );
                           },
                         ),
                         IconButton(
