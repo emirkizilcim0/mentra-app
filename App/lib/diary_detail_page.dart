@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
 
 class DiaryDetailPage extends StatelessWidget {
   final Map<String, dynamic> diaryEntry;
@@ -8,19 +10,28 @@ class DiaryDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: themeProvider.isDarkMode
+          ? const Color(0xFF121212) // Dark mode background
+          : Colors.white, // Light mode background
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: themeProvider.isDarkMode
+            ? const Color(0xFF1E1E1E) // Dark mode appbar
+            : Colors.white, // Light mode appbar
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: Icon(
+            Icons.arrow_back,
+            color: themeProvider.isDarkMode ? Colors.white : Colors.black,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Diary Entry',
           style: TextStyle(
-            color: Colors.black,
+            color: themeProvider.isDarkMode ? Colors.white : Colors.black,
             fontSize: 20,
             fontWeight: FontWeight.w500,
           ),
@@ -33,29 +44,42 @@ class DiaryDetailPage extends StatelessWidget {
           children: [
             Text(
               diaryEntry['title'] ?? 'Untitled',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
-                color: Colors.black,
+                color: themeProvider.isDarkMode ? Colors.white : Colors.black,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               diaryEntry['formattedDate'] ?? 'Unknown date',
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              style: TextStyle(
+                color: themeProvider.isDarkMode
+                    ? Colors.grey[400] // Dark mode date
+                    : Colors.grey[600], // Light mode date
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: themeProvider.isDarkMode
+                    ? const Color(0xFF1E1E1E) // Dark mode content background
+                    : Colors.grey[50], // Light mode content background
                 borderRadius: BorderRadius.circular(12),
+                border: themeProvider.isDarkMode
+                    ? Border.all(color: Colors.grey.shade800)
+                    : null,
               ),
               child: Text(
                 diaryEntry['content'] ?? '',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
-                  color: Colors.black87,
+                  color: themeProvider.isDarkMode
+                      ? Colors
+                            .white // Dark mode text
+                      : Colors.black87, // Light mode text
                   height: 1.6,
                 ),
               ),

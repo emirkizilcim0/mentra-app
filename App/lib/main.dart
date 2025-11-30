@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:mentra_app/splash_page.dart';
 import 'firebase_options.dart';
-import 'routes_manager.dart'; // Import the routes manager
+import 'routes_manager.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'mbti/result_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,19 +21,46 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Mentra App',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
+    return ChangeNotifierProvider(
+      create: (context) => ThemeProvider(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          print(
+            'Building MyApp with dark mode: ${themeProvider.isDarkMode}',
+          ); // Debug
+
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Mentra App',
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.deepPurple,
+                brightness: Brightness.light,
+              ),
+              useMaterial3: true,
+              scaffoldBackgroundColor: Colors.white,
+            ),
+            darkTheme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.deepPurple,
+                brightness: Brightness.dark,
+              ),
+              useMaterial3: true,
+              scaffoldBackgroundColor: Colors.grey[900],
+            ),
+            themeMode: themeProvider.isDarkMode
+                ? ThemeMode.dark
+                : ThemeMode.light,
+            initialRoute: '/',
+            routes: AppRoutes.routes,
+          );
+        },
       ),
-      initialRoute: '/',
-      routes: AppRoutes.routes,
     );
   }
 }
 
+// MyHomePage class'ınız aynı kalacak...
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
   final String title;

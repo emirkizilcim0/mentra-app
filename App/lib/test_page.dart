@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'mbti/data/questions_data.dart';
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
 
 // Test Sayfası Widget'ı
 class MbtiTestPage extends StatefulWidget {
@@ -37,22 +39,36 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final currentQuestion = mbtiQuestions[currentQuestionIndex];
+
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color.fromARGB(39, 253, 253, 253), Color(0xFFFFFFFF)],
-          ),
+        decoration: BoxDecoration(
+          gradient: themeProvider.isDarkMode
+              ? const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF121212), Color(0xFF1E1E1E)],
+                )
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color.fromARGB(39, 253, 253, 253),
+                    Color(0xFFFFFFFF),
+                  ],
+                ),
         ),
         child: Column(
           children: [
             const SizedBox(height: 40),
             Text(
               "Mentra",
-              style: GoogleFonts.pacifico(fontSize: 28, color: Colors.black87),
+              style: GoogleFonts.pacifico(
+                fontSize: 28,
+                color: themeProvider.isDarkMode ? Colors.white : Colors.black87,
+              ),
             ),
             const SizedBox(height: 30),
 
@@ -62,40 +78,49 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
                 height: 500,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color.fromARGB(19, 229, 229, 230),
+                  color: themeProvider.isDarkMode
+                      ? const Color(0xFF1E1E1E)
+                      : const Color.fromARGB(19, 229, 229, 230),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color.fromARGB(31, 85, 0, 145),
+                      color: themeProvider.isDarkMode
+                          ? Colors.black.withOpacity(0.5)
+                          : const Color.fromARGB(31, 85, 0, 145),
                       blurRadius: 8,
-                      offset: Offset(0, 3),
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
-                child: _buildQuestionCard(currentQuestion.question),
+                child: _buildQuestionCard(
+                  currentQuestion.question,
+                  themeProvider,
+                ),
               ),
             ),
 
-            const SizedBox(height: 30), // 🔼 TextButton yukarı alındı
+            const SizedBox(height: 30),
 
-            _buildNextButton(),
+            _buildNextButton(themeProvider),
           ],
         ),
       ),
     );
   }
 
-  // Başlık ve Geri Butonu
-
   // Soru Kartı
-  Widget _buildQuestionCard(String questionText) {
+  Widget _buildQuestionCard(String questionText, ThemeProvider themeProvider) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: themeProvider.isDarkMode
+            ? const Color(0xFF2D2D2D)
+            : Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: themeProvider.isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.2),
             spreadRadius: 2,
             blurRadius: 10,
             offset: const Offset(0, 5),
@@ -109,9 +134,11 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
             alignment: Alignment.topLeft,
             child: Text(
               "Question ${currentQuestionIndex + 1}/$totalQuestions",
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
-                color: Colors.grey,
+                color: themeProvider.isDarkMode
+                    ? Colors.grey[400]
+                    : Colors.grey,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -127,10 +154,12 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
               children: [
                 Text(
                   questionText,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: themeProvider.isDarkMode
+                        ? Colors.white
+                        : Colors.black87,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -143,22 +172,26 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
           _buildAnswerOptions(),
           const SizedBox(height: 20),
 
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
+            children: [
               Text(
-                "disagree", // En büyük daire (1)
+                "disagree",
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey,
+                  color: themeProvider.isDarkMode
+                      ? Colors.grey[400]
+                      : Colors.grey,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               Text(
-                "agree", // En büyük daire (5)
+                "agree",
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey,
+                  color: themeProvider.isDarkMode
+                      ? Colors.grey[400]
+                      : Colors.grey,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -232,7 +265,7 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
   }
 
   // İLERİ Butonu
-  Widget _buildNextButton() {
+  Widget _buildNextButton(ThemeProvider themeProvider) {
     final bool isAnswerSelected = selectedAnswer != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -248,12 +281,14 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
                   end: Alignment.centerRight,
                 )
               : null,
-          color: isAnswerSelected ? null : Colors.grey.shade300,
+          color: isAnswerSelected
+              ? null
+              : (themeProvider.isDarkMode
+                    ? Colors.grey.shade700
+                    : Colors.grey.shade300),
         ),
         child: Material(
           color: Colors.transparent,
-
-          ///_goToNextQuestion
           child: InkWell(
             onTap: isAnswerSelected ? _goToNextQuestion : null,
             borderRadius: BorderRadius.circular(30),
@@ -261,7 +296,11 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
               child: Text(
                 currentQuestionIndex < totalQuestions - 1 ? "NEXT" : "FINISH",
                 style: TextStyle(
-                  color: isAnswerSelected ? Colors.white : Colors.black54,
+                  color: isAnswerSelected
+                      ? Colors.white
+                      : (themeProvider.isDarkMode
+                            ? Colors.grey[400]
+                            : Colors.black54),
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
                 ),

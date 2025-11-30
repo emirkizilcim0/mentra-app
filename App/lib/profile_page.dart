@@ -1,5 +1,4 @@
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,7 +6,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:mentra_app/mbti/result_screen.dart';
 import 'home_page.dart';
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
 
+// Diğer kodlarınız aynı kalacak...
 String getZodiac(DateTime date) {
   int day = date.day;
   int month = date.month;
@@ -49,11 +51,12 @@ class _ProfilePageState extends State<ProfilePage> {
   DateTime? selectedBirthDate;
 
   String get _uid => FirebaseAuth.instance.currentUser?.uid ?? "unknown";
+  late Future<void> _loadingFuture;
 
   @override
   void initState() {
     super.initState();
-    loadProfileData();
+    _loadingFuture = loadProfileData();
   }
 
   Future<void> loadProfileData() async {
@@ -171,33 +174,24 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- Floating Action Button Helper Fonksiyonu ---
-  Widget _buildFab({
-    required IconData icon,
-    required VoidCallback onPressed,
-    Color color = const Color(0xFFB3E5FC),
-    double size = 30,
-  }) {
-    return FloatingActionButton(
-      heroTag: icon.codePoint.toString(), // Her FAB için benzersiz tag gerekli
-      shape: const CircleBorder(),
-      backgroundColor: color,
-      mini: size < 40, // Küçük FAB için mini: true kullanırız
-      onPressed: onPressed,
-      child: Icon(icon, size: size * 0.9, color: Colors.black87),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
+    print(
+      'ProfilePage building with dark mode: ${themeProvider.isDarkMode}',
+    ); // Debug
+
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F4F9),
+      backgroundColor: Theme.of(
+        context,
+      ).scaffoldBackgroundColor, // Dinamik renk
       body: Stack(
         children: [
           // Katman 1: Ana İçerik
           Column(
             children: [
-              // 1. SABİT ÜST KISIM (Top Bar) - SafeArea ile değiştirildi
+              // 1. SABİT ÜST KISIM (Top Bar)
               SafeArea(
                 bottom: false,
                 child: Container(
@@ -208,7 +202,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Mentra Yazısı - Normal Container
+                      // Mentra Yazısı
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -218,36 +212,30 @@ class _ProfilePageState extends State<ProfilePage> {
                           "Mentra",
                           style: GoogleFonts.pacifico(
                             fontSize: 28,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onBackground,
                           ),
                         ),
                       ),
-                      // Save Butonu - Blur efekti ile
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(30),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.5),
-                                width: 1,
-                              ),
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.save,
-                                color: Colors.black87,
-                                size: 24,
-                              ),
-                              onPressed: saveProfileData,
-                            ),
+                      // Theme ve Save Butonları
+                      Row(
+                        children: [
+                          // Theme Toggle Button
+                          _buildBlurIconButton(
+                            icon: themeProvider.isDarkMode
+                                ? Icons.light_mode
+                                : Icons.dark_mode,
+                            onPressed: () {
+                              print('Toggling theme...'); // Debug
+                              themeProvider.toggleTheme();
+                            },
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          // Save Butonu
+                          _buildBlurIconButton(
+                            icon: Icons.save,
+                            onPressed: saveProfileData,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -257,7 +245,7 @@ class _ProfilePageState extends State<ProfilePage> {
               // 2. KAYDIRILABİLİR PROFİL İÇERİĞİ
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 90), // Alt boşluk
+                  padding: const EdgeInsets.only(bottom: 90),
                   child: Container(
                     margin: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -265,9 +253,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.black12, width: 1.5),
+                      border: Border.all(
+                        color: Colors.grey.withOpacity(0.3),
+                        width: 1.5,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -297,12 +288,13 @@ class _ProfilePageState extends State<ProfilePage> {
                           style: GoogleFonts.poppins(
                             fontWeight: FontWeight.w600,
                             fontSize: 18,
+                            color: Theme.of(context).colorScheme.onBackground,
                           ),
                         ),
                         const SizedBox(height: 10),
 
                         // ---------------- FIELDS ----------------
-                        _buildField("Name", nameController),
+                        _buildField("Name", nameController, context),
                         const SizedBox(height: 12),
 
                         // Zodiac Field (Read-only)
@@ -312,11 +304,17 @@ class _ProfilePageState extends State<ProfilePage> {
                           decoration: InputDecoration(
                             labelText: "Zodiac / Sign",
                             filled: true,
-                            fillColor: const Color(0xFFF9FBFC),
+                            fillColor: Theme.of(context).colorScheme.surface,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             suffixIcon: const Icon(Icons.lock, size: 16),
+                            labelStyle: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -332,7 +330,9 @@ class _ProfilePageState extends State<ProfilePage> {
                               decoration: InputDecoration(
                                 labelText: "Birth Date",
                                 filled: true,
-                                fillColor: const Color(0xFFF9FBFC),
+                                fillColor: Theme.of(
+                                  context,
+                                ).colorScheme.surface,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -340,6 +340,14 @@ class _ProfilePageState extends State<ProfilePage> {
                                   Icons.calendar_today,
                                   size: 16,
                                 ),
+                                labelStyle: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                ),
+                              ),
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -350,7 +358,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF9DDE2),
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? Colors.pink[900]!.withOpacity(0.3)
+                                : const Color(0xFFF9DDE2),
                             borderRadius: BorderRadius.circular(15),
                           ),
                           child: Column(
@@ -382,6 +393,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   style: GoogleFonts.poppins(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onBackground,
                                   ),
                                 ),
                               ),
@@ -390,7 +404,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                 mbtiDesc,
                                 style: GoogleFonts.poppins(
                                   fontSize: 13,
-                                  color: Colors.black54,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface.withOpacity(0.7),
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -421,6 +437,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w600,
                               fontSize: 16,
+                              color: Theme.of(context).colorScheme.onBackground,
                             ),
                           ),
                         ),
@@ -429,15 +446,19 @@ class _ProfilePageState extends State<ProfilePage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.surface,
                             borderRadius: BorderRadius.circular(15),
-                            border: Border.all(color: Colors.black12),
+                            border: Border.all(
+                              color: Colors.grey.withOpacity(0.3),
+                            ),
                           ),
                           child: Text(
                             "Your birth chart information will appear here.",
                             style: GoogleFonts.poppins(
                               fontSize: 13,
-                              color: Colors.black54,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(0.7),
                             ),
                           ),
                         ),
@@ -477,9 +498,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
 
-          // =========================================================
-          // 3. SABİT ALT KISIM (FAB NAVİGASYON BUTONLARI - 4 TANE)
-          // =========================================================
+          // 3. SABİT ALT KISIM (Navigation)
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
@@ -494,19 +513,25 @@ class _ProfilePageState extends State<ProfilePage> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.black.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.white.withOpacity(0.5),
                         width: 1,
                       ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        // 1. Home Button
                         IconButton(
-                          icon: const Icon(Icons.home, color: Colors.black87),
+                          icon: Icon(
+                            Icons.home,
+                            color: Theme.of(context).colorScheme.onBackground,
+                          ),
                           onPressed: () {
                             Navigator.pushReplacement(
                               context,
@@ -516,12 +541,10 @@ class _ProfilePageState extends State<ProfilePage> {
                             );
                           },
                         ),
-
-                        // 2. Advice Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.lightbulb_outline,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onBackground,
                           ),
                           onPressed: () {
                             Navigator.push(
@@ -532,23 +555,19 @@ class _ProfilePageState extends State<ProfilePage> {
                             );
                           },
                         ),
-
-                        // 3. Mood Track Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.emoji_emotions_outlined,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onBackground,
                           ),
                           onPressed: () {
                             // Mood Track Sayfasına yönlendirme
                           },
                         ),
-
-                        // 4. Profile Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.person_outline,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onBackground,
                           ),
                           onPressed: () {},
                         ),
@@ -564,14 +583,56 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildField(String label, TextEditingController c) {
+  Widget _buildField(
+    String label,
+    TextEditingController c,
+    BuildContext context,
+  ) {
     return TextField(
       controller: c,
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: const Color(0xFFF9FBFC),
+        fillColor: Theme.of(context).colorScheme.surface,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+      ),
+    );
+  }
+
+  Widget _buildBlurIconButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(30),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.black.withOpacity(0.3)
+                : Colors.white.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white.withOpacity(0.2)
+                  : Colors.white.withOpacity(0.5),
+              width: 1,
+            ),
+          ),
+          child: IconButton(
+            icon: Icon(
+              icon,
+              color: Theme.of(context).colorScheme.onBackground,
+              size: 24,
+            ),
+            onPressed: onPressed,
+          ),
+        ),
       ),
     );
   }

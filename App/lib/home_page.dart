@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui'; // BackdropFilter için gereklidir
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +8,8 @@ import 'chat_page.dart';
 import 'profile_page.dart';
 import 'motivational_speeches.dart';
 import 'services/diary_service.dart';
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
 
 // Varsayılan AdvicePage tanımı
 class AdvicePage extends StatelessWidget {
@@ -27,16 +30,77 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
   // === 1. Günlüğü Olan Günlerin Durumunu Tutmak İçin Map  ===
   Map<String, String> _daysWithDiaryStatus = {};
 
   bool _isLoading = true;
 
+  // 💡 YENİ ANİMASYON DEĞİŞKENLERİ
+  late AnimationController _animationController;
+  late Animation<double> _opacityAnimation;
+
+  late Animation<double> _floatAnimation;
+  int _dotCount = 0;
+  Timer? _timer;
+
   @override
   void initState() {
     super.initState();
+    // 1. AnimationController'ı başlat
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000), // Bir saniyede bir döngü
+    );
+    // 2. Animasyonu opaklık (0.3'ten 1.0'a) olarak tanımla ve tekrar et
+    _opacityAnimation = Tween(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(_animationController);
+    _floatAnimation = Tween<double>(begin: -5.0, end: 5.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOutSine, // Yumuşak yaylanma eğrisi kullanıyoruz
+      ),
+    );
+    _animationController.repeat(
+      reverse: true,
+    ); // Sürekli olarak ileri/geri tekrar et
+    _startDotAnimation();
+
     _loadDiaryAvailabilityStatus();
+  }
+
+  // 💡 OPTİMİZASYON: Noktaları sırayla gösteren fonksiyon (Manuel sayaç kontrolü)
+  void _startDotAnimation() {
+    _timer?.cancel();
+    _dotCount = 0; // Sayacı sıfırdan başlat
+
+    _timer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
+      if (_isLoading) {
+        setState(() {
+          _dotCount++;
+          // Maksimum 3 nokta (4. durum, yani _dotCount=4) oluşursa
+          // sayacı tekrar sıfıra (_dotCount=0) ayarla.
+          if (_dotCount > 3) {
+            _dotCount = 0;
+          }
+        });
+      } else {
+        timer.cancel(); // Yükleme bittiyse durdur
+        setState(() {
+          _dotCount = 3; // Yükleme tamamlanınca 3 nokta kalsın
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose(); // Controller'ı temizle
+    _timer?.cancel(); // 💡 OPTİMİZASYON: Timer'ı temizle
+    super.dispose();
   }
 
   // === 2. Tüm günlükleri ve Advice durumlarını çek (DÜZELTİLDİ) ===
@@ -44,6 +108,7 @@ class _HomePageState extends State<HomePage> {
     // YÜKLEMEYİ BAŞLAT
     setState(() {
       _isLoading = true;
+      _animationController.repeat(reverse: true); // Animasyonu başlat
     });
 
     try {
@@ -80,7 +145,10 @@ class _HomePageState extends State<HomePage> {
       // Veriler başarıyla çekildi ve haritalandı
       setState(() {
         _daysWithDiaryStatus = days;
-        _isLoading = false; // YÜKLEMEYİ BİTİR
+        _isLoading = false;
+        _animationController.stop(); // Yükleme bitti, animasyonu durdur
+        _timer?.cancel(); // 💡 OPTİMİZASYON: Timer'ı durdur
+        _dotCount = 3; // Noktaları sabitle
       });
 
       print('DEBUG: ${days.length} diary statuses loaded.');
@@ -91,6 +159,9 @@ class _HomePageState extends State<HomePage> {
       // Hata olsa bile yüklemeyi bitir
       setState(() {
         _isLoading = false;
+        _animationController.stop(); // Yükleme bitti, animasyonu durdur
+        _timer?.cancel(); // 💡 OPTİMİZASYON: Timer'ı durdur
+        _dotCount = 3; // Noktaları sabitle
       });
     }
   }
@@ -118,6 +189,9 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
 
     try {
+      // 💡 OPTİMİZASYON: Günlük sorgusunu hedefli hale getir. Eğer DiaryService
+      // tüm girişleri çekmek yerine sadece o güne ait girişi çekebiliyorsa,
+      // bu sorgu hızlanacaktır. (Mevcut kodda bu düzeltme yapılamaz, ancak akılda tutulmalıdır)
       final entries = await DiaryService.getDiaryEntries();
       final dailyEntries = entries
           .where((entry) => entry['formattedDate'] == targetDateString)
@@ -293,6 +367,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final now = DateTime.now();
     final month = DateFormat.MMMM().format(now);
     final monthIndex = now.month - 1; // Ayın indexi (0-11)
@@ -312,7 +387,9 @@ class _HomePageState extends State<HomePage> {
     final bottomPadding = 90.0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F4F9),
+      backgroundColor: themeProvider.isDarkMode
+          ? const Color(0xFF121212) // Dark mode background
+          : const Color(0xFFE8F4F9), // Light mode background
 
       body: Stack(
         children: [
@@ -322,7 +399,7 @@ class _HomePageState extends State<HomePage> {
               // 1. SABİT ÜST KISIM (Top Bar)
               SafeArea(
                 bottom: false,
-                child: Container(
+                child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 12,
@@ -330,53 +407,46 @@ class _HomePageState extends State<HomePage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Mentra Yazısı - Artık normal Container
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        child: Text(
+                      // Mentra Yazısı (Şeffaf FAB)
+                      FloatingActionButton.extended(
+                        heroTag: 'mentraTitle',
+                        onPressed: () {},
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        label: Text(
                           "Mentra",
                           style: GoogleFonts.pacifico(
                             fontSize: 28,
-                            color: Colors.black87,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                         ),
                       ),
-                      // Chat Butonu - Blur efekti ile
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(30),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.5),
-                                width: 1,
-                              ),
+                      // Chat FAB (Küçük FAB)
+                      FloatingActionButton(
+                        heroTag: 'chatButtonTop',
+                        mini: true,
+                        shape: const CircleBorder(),
+                        backgroundColor: themeProvider.isDarkMode
+                            ? const Color(0xFF2D2D2D)
+                            : Colors.white,
+                        elevation: 2.0,
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ChatPage(selectedDate: null),
                             ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.chat_bubble_outline,
-                                color: Colors.black87,
-                                size: 24,
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const ChatPage(selectedDate: null),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
+                          );
+                        },
+                        child: Icon(
+                          Icons.chat_bubble_outline,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                          size: 24,
                         ),
                       ),
                     ],
@@ -398,9 +468,16 @@ class _HomePageState extends State<HomePage> {
                         ),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: themeProvider.isDarkMode
+                              ? const Color(0xFF1E1E1E)
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.black12, width: 1.5),
+                          border: Border.all(
+                            color: themeProvider.isDarkMode
+                                ? Colors.grey.withOpacity(0.3)
+                                : Colors.black12,
+                            width: 1.5,
+                          ),
                         ),
                         child: Column(
                           children: [
@@ -412,14 +489,18 @@ class _HomePageState extends State<HomePage> {
                                   style: GoogleFonts.poppins(
                                     fontSize: 22,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black,
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.white
+                                        : Colors.black,
                                   ),
                                 ),
                                 Text(
                                   "$year",
                                   style: GoogleFonts.poppins(
                                     fontSize: 16,
-                                    color: Colors.black87,
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.white70
+                                        : Colors.black87,
                                   ),
                                 ),
                               ],
@@ -444,6 +525,9 @@ class _HomePageState extends State<HomePage> {
                                           style: GoogleFonts.poppins(
                                             fontWeight: FontWeight.w600,
                                             fontSize: 13,
+                                            color: themeProvider.isDarkMode
+                                                ? Colors.white70
+                                                : Colors.black87,
                                           ),
                                         ),
                                       )
@@ -500,10 +584,15 @@ class _HomePageState extends State<HomePage> {
                                             ? Colors.deepPurple.shade400
                                             : (diaryStatus == 'written')
                                             ? Colors.purple.shade200
-                                            : Colors.white,
+                                            : (themeProvider.isDarkMode
+                                                  ? const Color(0xFF2D2D2D)
+                                                  : Colors.white),
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
-                                          color: Colors.black26,
+                                          color: themeProvider.isDarkMode
+                                              ? Colors.grey.withOpacity(0.5)
+                                              : Colors.black26,
+                                          width: 1,
                                         ),
                                       ),
                                       alignment: Alignment.center,
@@ -515,7 +604,9 @@ class _HomePageState extends State<HomePage> {
                                               : FontWeight.w400,
                                           color: (diaryStatus == 'advised')
                                               ? Colors.white
-                                              : Colors.black87,
+                                              : (themeProvider.isDarkMode
+                                                    ? Colors.white
+                                                    : Colors.black87),
                                         ),
                                       ),
                                     ),
@@ -536,17 +627,31 @@ class _HomePageState extends State<HomePage> {
                         child: Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFFF7F7), Color(0xFFFDEDED)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
+                            gradient: themeProvider.isDarkMode
+                                ? const LinearGradient(
+                                    colors: [
+                                      Color(0xFF2D1B69),
+                                      Color(0xFF1A103C),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  )
+                                : const LinearGradient(
+                                    colors: [
+                                      Color(0xFFFFF7F7),
+                                      Color(0xFFFDEDED),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
                             borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [
+                            boxShadow: [
                               BoxShadow(
-                                color: Colors.black12,
+                                color: themeProvider.isDarkMode
+                                    ? Colors.black54
+                                    : Colors.black12,
                                 blurRadius: 8,
-                                offset: Offset(0, 4),
+                                offset: const Offset(0, 4),
                               ),
                             ],
                           ),
@@ -558,9 +663,11 @@ class _HomePageState extends State<HomePage> {
                                 padding: const EdgeInsets.all(24),
                                 child: Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.auto_fix_high,
-                                      color: Colors.black87,
+                                      color: themeProvider.isDarkMode
+                                          ? Colors.white
+                                          : Colors.black87,
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
@@ -568,7 +675,9 @@ class _HomePageState extends State<HomePage> {
                                       style: GoogleFonts.poppins(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 18,
-                                        color: Colors.black87,
+                                        color: themeProvider.isDarkMode
+                                            ? Colors.white
+                                            : Colors.black87,
                                       ),
                                     ),
                                     const Spacer(),
@@ -577,7 +686,9 @@ class _HomePageState extends State<HomePage> {
                                       style: GoogleFonts.poppins(
                                         fontWeight: FontWeight.w400,
                                         fontSize: 14,
-                                        color: Colors.black54,
+                                        color: themeProvider.isDarkMode
+                                            ? Colors.white70
+                                            : Colors.black54,
                                       ),
                                     ),
                                   ],
@@ -594,7 +705,9 @@ class _HomePageState extends State<HomePage> {
                                   style: GoogleFonts.poppins(
                                     fontSize: 16,
                                     height: 1.7,
-                                    color: Colors.black87,
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.white
+                                        : Colors.black87,
                                     fontStyle: FontStyle.italic,
                                   ),
                                   textAlign: TextAlign.left,
@@ -619,43 +732,70 @@ class _HomePageState extends State<HomePage> {
           // =========================================================
           Align(
             alignment: Alignment.bottomCenter,
+
             child: Padding(
               padding: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(30),
+
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
+
                       vertical: 8,
                     ),
+
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
+                      color: themeProvider.isDarkMode
+                          ? Colors.black.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.3),
+
                       borderRadius: BorderRadius.circular(30),
+
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.5),
+                        color: themeProvider.isDarkMode
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.white.withOpacity(0.5),
+
                         width: 1,
                       ),
                     ),
+
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+
                       children: [
                         // 1. Home Button
                         IconButton(
-                          icon: const Icon(Icons.home, color: Colors.black87),
+                          icon: Icon(
+                            Icons.home,
+
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+
                           onPressed: () {},
                         ),
 
                         // 2. Advice Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.lightbulb_outline,
-                            color: Colors.black87,
+
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
+
                           onPressed: () {
                             Navigator.push(
                               context,
+
                               MaterialPageRoute(
                                 builder: (context) => const AdvicePage(),
                               ),
@@ -665,10 +805,14 @@ class _HomePageState extends State<HomePage> {
 
                         // 3. Mood Track Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.emoji_emotions_outlined,
-                            color: Colors.black87,
+
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
+
                           onPressed: () {
                             // Mood Track Sayfasına yönlendirme
                           },
@@ -676,13 +820,18 @@ class _HomePageState extends State<HomePage> {
 
                         // 4. Profile Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.person_outline,
-                            color: Colors.black87,
+
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
+
                           onPressed: () {
                             Navigator.push(
                               context,
+
                               MaterialPageRoute(
                                 builder: (context) => const ProfilePage(),
                               ),
@@ -697,34 +846,69 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // Katman 4: Loading Overlay (Sadece _isLoading true iken görünür)
-          if (_isLoading)
-            AbsorbPointer(
-              absorbing: true,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-                child: Container(
-                  color: Colors.white.withOpacity(0.7),
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset('assets/logo.png', width: 300, height: 300),
-                        const SizedBox(height: 20),
-                        Text(
-                          "Mentra Yükleniyor...",
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
+          // =========================================================
+          // 4. LOADING OVERLAY (ANIMASYONLU)
+          // =========================================================
+          // 💡 Animasyon eklendi: AnimatedOpacity ve FadeTransition
+          AnimatedOpacity(
+            opacity: _isLoading ? 1.0 : 0.0, // Yükleniyorsa tam, değilse şeffaf
+            duration: const Duration(milliseconds: 500),
+            child: IgnorePointer(
+              ignoring: !_isLoading,
+              child: AbsorbPointer(
+                absorbing: true,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                  child: Container(
+                    color: themeProvider.isDarkMode
+                        ? Colors.black.withOpacity(0.7)
+                        : Colors.white.withOpacity(0.7),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedBuilder(
+                            // Floating animasyonunu uygular
+                            animation: _floatAnimation,
+                            builder: (context, child) {
+                              // Y ekseninde _floatAnimation değerinde hareket et
+                              return Transform.translate(
+                                offset: Offset(0, _floatAnimation.value),
+                                child: child,
+                              );
+                            },
+                            // Logo widget'ı
+                            child: Image.asset(
+                              'assets/logo.png',
+                              width: 300,
+                              height: 300,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 20),
+                          // 💡 FADE TRANSITION İLE YAZIYA SÜREKLİ ANİMASYON
+                          FadeTransition(
+                            opacity: _opacityAnimation,
+                            child: Text(
+                              // 💡 DÜZELTİLMİŞ KISIM: Dinamik nokta eklenmesi
+                              "Mentra Yükleniyor" +
+                                  List.filled(_dotCount, '.').join(),
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: themeProvider.isDarkMode
+                                    ? Colors.white
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );

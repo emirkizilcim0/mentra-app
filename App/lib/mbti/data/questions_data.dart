@@ -1,7 +1,6 @@
 import 'dart:convert';
 import '../models/question.dart';
 
-
 const String mbtiJsonString = r'''
 [
   {

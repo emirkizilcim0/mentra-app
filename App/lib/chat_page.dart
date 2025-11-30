@@ -10,6 +10,20 @@ import 'diary_write_page.dart';
 import 'diary_detail_page.dart';
 import 'services/diary_service.dart';
 import 'package:intl/intl.dart'; // Tarih formatlama için eklendi
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
+
+// Varsayılan AdvicePage tanımı
+class AdvicePage extends StatelessWidget {
+  const AdvicePage({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Tavsiye Sayfası')),
+      body: const Center(child: Text('Burada Günlük Tavsiyeler Yer Alacak.')),
+    );
+  }
+}
 
 // Parametre alabilmesi için StatelessWidget yerine StatefulWidget'a dönüştürülmüştü.
 // Şimdi parametreyi ekliyoruz.
@@ -110,12 +124,20 @@ class _ChatPageState extends State<ChatPage> {
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        final themeProvider = Provider.of<ThemeProvider>(
+          context,
+          listen: false,
+        );
         return AlertDialog(
+          backgroundColor: themeProvider.isDarkMode
+              ? const Color(0xFF1E1E1E)
+              : Colors.white,
           title: Text(
             'Dairy Choice: $date',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.bold,
               fontSize: 18,
+              color: themeProvider.isDarkMode ? Colors.white : Colors.black,
             ),
           ),
           content: SingleChildScrollView(
@@ -138,22 +160,40 @@ class _ChatPageState extends State<ChatPage> {
                     ListTile(
                       leading: Icon(
                         Icons.note_alt_outlined,
-                        color: Colors.blueGrey.shade700,
+                        color: themeProvider.isDarkMode
+                            ? Colors.blueGrey.shade300
+                            : Colors.blueGrey.shade700,
                       ),
                       title: Text(
                         entryTitle,
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black,
                         ),
                       ),
-                      subtitle: Text(contentPreview),
+                      subtitle: Text(
+                        contentPreview,
+                        style: TextStyle(
+                          color: themeProvider.isDarkMode
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                        ),
+                      ),
                       onTap: () {
                         Navigator.of(context).pop(); // Seçim pop-up'ını kapat
                         _openDiaryDetail(entry); // Seçilen günlüğü aç
                       },
                     ),
-                    if (index < entries.length - 1) const Divider(height: 1),
+                    if (index < entries.length - 1)
+                      Divider(
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey[700]
+                            : Colors.grey[300],
+                        height: 1,
+                      ),
                   ],
                 );
               }).toList(),
@@ -163,7 +203,11 @@ class _ChatPageState extends State<ChatPage> {
             TextButton(
               child: Text(
                 'Close',
-                style: GoogleFonts.poppins(color: Colors.redAccent),
+                style: GoogleFonts.poppins(
+                  color: themeProvider.isDarkMode
+                      ? Colors.redAccent[100]
+                      : Colors.redAccent,
+                ),
               ),
               onPressed: () {
                 Navigator.of(context).pop();
@@ -202,6 +246,7 @@ class _ChatPageState extends State<ChatPage> {
           SnackBar(
             content: Text('$targetDateString için bir günlük bulunamadı.'),
             duration: const Duration(seconds: 3),
+            backgroundColor: Colors.orange,
           ),
         );
       });
@@ -281,10 +326,19 @@ class _ChatPageState extends State<ChatPage> {
         isLoadingAdvice = false;
       });
 
+      final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Your Psychological Analysis'),
+          backgroundColor: themeProvider.isDarkMode
+              ? const Color(0xFF1E1E1E)
+              : Colors.white,
+          title: Text(
+            'Your Psychological Analysis',
+            style: TextStyle(
+              color: themeProvider.isDarkMode ? Colors.white : Colors.black,
+            ),
+          ),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,27 +346,56 @@ class _ChatPageState extends State<ChatPage> {
                 if (userName != "User")
                   Text(
                     'For: $userName',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: themeProvider.isDarkMode
+                          ? Colors.white
+                          : Colors.black,
+                    ),
                   ),
                 if (userCharacterType.isNotEmpty)
                   Text(
                     'Personality: $userCharacterType',
-                    style: const TextStyle(fontSize: 12),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: themeProvider.isDarkMode
+                          ? Colors.grey[400]
+                          : Colors.grey[600],
+                    ),
                   ),
                 if (userSign.isNotEmpty)
                   Text(
                     'Zodiac: $userSign',
-                    style: const TextStyle(fontSize: 12),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: themeProvider.isDarkMode
+                          ? Colors.grey[400]
+                          : Colors.grey[600],
+                    ),
                   ),
                 const SizedBox(height: 16),
-                Text(analysis['advice'] ?? 'No advice available.'),
+                Text(
+                  analysis['advice'] ?? 'No advice available.',
+                  style: TextStyle(
+                    color: themeProvider.isDarkMode
+                        ? Colors.white
+                        : Colors.black,
+                  ),
+                ),
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
+              child: Text(
+                'Close',
+                style: TextStyle(
+                  color: themeProvider.isDarkMode
+                      ? Colors.blueAccent[100]
+                      : Colors.blueAccent,
+                ),
+              ),
             ),
           ],
         ),
@@ -348,20 +431,45 @@ class _ChatPageState extends State<ChatPage> {
         diaryCount: 1, // Analyzing based on recent diaries
       );
 
+      final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Advice for ${diaryEntry['formattedDate']}'),
+          backgroundColor: themeProvider.isDarkMode
+              ? const Color(0xFF1E1E1E)
+              : Colors.white,
+          title: Text(
+            'Advice for ${diaryEntry['formattedDate']}',
+            style: TextStyle(
+              color: themeProvider.isDarkMode ? Colors.white : Colors.black,
+            ),
+          ),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [Text(analysis['advice'] ?? 'No advice available.')],
+              children: [
+                Text(
+                  analysis['advice'] ?? 'No advice available.',
+                  style: TextStyle(
+                    color: themeProvider.isDarkMode
+                        ? Colors.white
+                        : Colors.black,
+                  ),
+                ),
+              ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
+              child: Text(
+                'Close',
+                style: TextStyle(
+                  color: themeProvider.isDarkMode
+                      ? Colors.blueAccent[100]
+                      : Colors.blueAccent,
+                ),
+              ),
             ),
           ],
         ),
@@ -375,8 +483,12 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F4F9),
+      backgroundColor: themeProvider.isDarkMode
+          ? const Color(0xFF121212) // Dark mode background
+          : const Color(0xFFE8F4F9), // Light mode background
       body: Stack(
         children: [
           // Katman 1: Ana İçerik
@@ -403,7 +515,9 @@ class _ChatPageState extends State<ChatPage> {
                           "Mentra",
                           style: GoogleFonts.pacifico(
                             fontSize: 28,
-                            color: Colors.black87,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                         ),
                       ),
@@ -423,7 +537,11 @@ class _ChatPageState extends State<ChatPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 decoration: BoxDecoration(
-                  color: Colors.black87,
+                  color: themeProvider.isDarkMode
+                      ? Colors
+                            .deepPurple
+                            .shade600 // Dark mode button
+                      : Colors.black87, // Light mode button
                   borderRadius: BorderRadius.circular(40),
                 ),
                 child: InkWell(
@@ -457,11 +575,18 @@ class _ChatPageState extends State<ChatPage> {
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Colors.black87,
+                        color: themeProvider.isDarkMode
+                            ? Colors.white
+                            : Colors.black87,
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.refresh),
+                      icon: Icon(
+                        Icons.refresh,
+                        color: themeProvider.isDarkMode
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
                       onPressed: _loadDiaryEntries,
                       tooltip: 'Refresh diaries',
                     ),
@@ -477,7 +602,7 @@ class _ChatPageState extends State<ChatPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 25.0),
                   child: Text(
                     errorMessage!,
-                    style: const TextStyle(color: Colors.red, fontSize: 14),
+                    style: TextStyle(color: Colors.red.shade300, fontSize: 14),
                   ),
                 ),
 
@@ -489,7 +614,13 @@ class _ChatPageState extends State<ChatPage> {
                     vertical: 10,
                   ),
                   child: isLoading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        )
                       : diaryEntries.isEmpty
                       ? Column(
                           children: [
@@ -497,14 +628,18 @@ class _ChatPageState extends State<ChatPage> {
                             Icon(
                               Icons.edit_note,
                               size: 64,
-                              color: Colors.grey.shade400,
+                              color: themeProvider.isDarkMode
+                                  ? Colors.grey.shade600
+                                  : Colors.grey.shade400,
                             ),
                             const SizedBox(height: 16),
                             Text(
                               "No diary entries yet.\nStart writing your first diary!",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.grey.shade600,
+                                color: themeProvider.isDarkMode
+                                    ? Colors.grey.shade400
+                                    : Colors.grey.shade600,
                                 fontSize: 16,
                               ),
                             ),
@@ -520,11 +655,15 @@ class _ChatPageState extends State<ChatPage> {
                                 horizontal: 16,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: themeProvider.isDarkMode
+                                    ? const Color(0xFF1E1E1E) // Dark mode card
+                                    : Colors.white, // Light mode card
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black12,
+                                    color: themeProvider.isDarkMode
+                                        ? Colors.black.withOpacity(0.5)
+                                        : Colors.black12,
                                     blurRadius: 4,
                                     offset: const Offset(0, 2),
                                   ),
@@ -539,7 +678,9 @@ class _ChatPageState extends State<ChatPage> {
                                         entry['formattedDate'] ?? 'No date',
                                         style: GoogleFonts.poppins(
                                           fontSize: 15,
-                                          color: Colors.black87,
+                                          color: themeProvider.isDarkMode
+                                              ? Colors.white
+                                              : Colors.black87,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -551,7 +692,13 @@ class _ChatPageState extends State<ChatPage> {
                                         vertical: 12,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.purple.shade500,
+                                        color: themeProvider.isDarkMode
+                                            ? Colors
+                                                  .deepPurple
+                                                  .shade600 // Dark mode
+                                            : Colors
+                                                  .purple
+                                                  .shade500, // Light mode
                                         borderRadius: BorderRadius.circular(15),
                                       ),
                                       child: InkWell(
@@ -631,10 +778,14 @@ class _ChatPageState extends State<ChatPage> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
+                      color: themeProvider.isDarkMode
+                          ? Colors.black.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.5),
+                        color: themeProvider.isDarkMode
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.white.withOpacity(0.5),
                         width: 1,
                       ),
                     ),
@@ -643,7 +794,12 @@ class _ChatPageState extends State<ChatPage> {
                       children: [
                         // 1. Home Button
                         IconButton(
-                          icon: const Icon(Icons.home, color: Colors.black87),
+                          icon: Icon(
+                            Icons.home,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
                           onPressed: () {
                             Navigator.pushReplacement(
                               context,
@@ -656,9 +812,11 @@ class _ChatPageState extends State<ChatPage> {
 
                         // 2. Advice Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.lightbulb_outline,
-                            color: Colors.black87,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                           onPressed: () {
                             Navigator.push(
@@ -672,9 +830,11 @@ class _ChatPageState extends State<ChatPage> {
 
                         // 3. Mood Track Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.emoji_emotions_outlined,
-                            color: Colors.black87,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                           onPressed: () {
                             // Mood Track Sayfasına yönlendirme
@@ -683,9 +843,11 @@ class _ChatPageState extends State<ChatPage> {
 
                         // 4. Profile Button
                         IconButton(
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.person_outline,
-                            color: Colors.black87,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
                           ),
                           onPressed: () {
                             Navigator.push(
