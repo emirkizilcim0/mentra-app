@@ -1,7 +1,6 @@
-# Base image
 FROM python:3.11-slim
 
-# Install system dependencies (needed for building packages + Rust)
+# System deps
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
@@ -9,25 +8,13 @@ RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust (needed for ChromaDB, tokenizers, pydantic-core)
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Set working directory
 WORKDIR /app
 
-# Copy backend code into container
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
-# Upgrade pip and install Python dependencies
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Persistent volume for ChromaDB
 VOLUME ["/app/chroma"]
 
-# Expose Render's internal port
-EXPOSE 8000
-
-# Start command using Gunicorn + Uvicorn workers
-CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "app:app", "-b", "0.0.0.0:$PORT"]
+CMD ["sh", "-c", "gunicorn app:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-10000} --workers 1"]

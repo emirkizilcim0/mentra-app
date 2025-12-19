@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class DiaryPsychologistAdvisor:
     """Psychologist class to provide advice based on user diaries"""
     
-    def __init__(self, api_key: str = None, model: str = "models/gemini-2.0-flash"):
+    def __init__(self, api_key: str = None, model: str = "models/gemini-1.5-flash"):
         # Use environment variable for API key if not provided
         if api_key is None:
             api_key=os.getenv("GEMINI_API_KEY")
@@ -44,31 +44,26 @@ class DiaryPsychologistAdvisor:
         Structure your response with clear sections but maintain a natural, conversational flow.
         Keep your response between 300-400 words.
         """
-
-    def _initialize_model(self, model_name: str):
-        """Initialize the model with fallback options"""
+    def _initialize_model(self, model_name: str = None):
         models_to_try = [
             model_name,
-            "gemini-1.5-flash",
-            "gemini-1.0-pro",
-            "gemini-pro",
-            "models/gemini-pro",
-            "models/gemini-2.0-flash"
+            "models/gemini-1.5-flash-latest",
+            "models/gemini-1.5-pro-latest",
         ]
-        
+    
+        # Remove None values
+        models_to_try = [m for m in models_to_try if m]
+    
         for model in models_to_try:
             try:
                 logger.info(f"Trying to initialize model: {model}")
-                genai_model = genai.GenerativeModel(model)
-                # Test with a simple prompt
-                test_response = genai_model.generate_content("Say hello")
-                logger.info(f"Successfully initialized model: {model}")
-                return genai_model
+                return genai.GenerativeModel(model)
             except Exception as e:
                 logger.warning(f"Failed to initialize model {model}: {e}")
-                continue
-        
-        raise Exception(f"Could not initialize any Gemini model. Tried: {models_to_try}")
+    
+        raise Exception("No compatible Gemini model available")
+
+
 
     def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str) -> Dict[str, Any]:
         """Analyze user diaries and provide psychological advice"""
