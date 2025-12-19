@@ -24,14 +24,10 @@ class PsychologistAdvisor:
     def __init__(self, config):
         self.config = config or get_config()
         genai.configure(api_key=self.config['API_KEY'])
-        model_name = self.config['CHAT_MODEL']
-
-        if not model_name.endswith("-latest"):
-            logger.warning(f"Model '{model_name}' is not -latest, falling back")
-            model_name = "models/gemini-1.5-flash-latest"
+        model_name = "models/gemini-1.5-flash"
         
         self.model = genai.GenerativeModel(model_name)
-        
+
         
         self.summary_prompt = """
         Please provide a detailed advice and motivational speech according to user's character type, sign and birth map.

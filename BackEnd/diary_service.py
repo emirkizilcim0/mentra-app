@@ -46,6 +46,7 @@ class DiaryPsychologistAdvisor:
         """
     def _initialize_model(self, model_name: str = None):
         models_to_try = [
+            "models/gemini-1.5-flash",
             model_name,
             "models/gemini-1.5-flash-latest",
             "models/gemini-1.5-pro-latest",
