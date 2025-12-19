@@ -1,0 +1,10 @@
+// lib/services/diary/diary_config.dart
+class DiaryConfig {
+  static const String baseUrl = 'https://mentra-app.onrender.com';
+
+  static const Map<String, String> jsonHeaders = {
+    'Content-Type': 'application/json',
+  };
+
+  static const Map<String, String> getHeaders = {'Accept': 'application/json'};
+}

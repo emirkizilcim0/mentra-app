@@ -1,0 +1,31 @@
+final List<String> positiveWords = [
+  'happy',
+  'joy',
+  'great',
+  'good',
+  'love',
+  'wonderful',
+  'optimistic',
+  'positive',
+  'success',
+  'calm',
+  'peace',
+  'glad',
+  'smile',
+];
+
+final List<String> negativeWords = [
+  'sad',
+  'anxious',
+  'worry',
+  'stress',
+  'angry',
+  'bad',
+  'pain',
+  'cry',
+  'depress',
+  'fear',
+  'lonely',
+  'tired',
+  'hopeless',
+];

@@ -1,19 +1,21 @@
 // It consists of routes of the application.
 
 import 'package:flutter/material.dart';
-import 'package:mentra_app/chat_page.dart';
-import 'package:mentra_app/diary_write_page.dart';
-import 'package:mentra_app/diary_detail_page.dart';
-import 'splash_page.dart';
-import 'home_page.dart';
-import 'login_page.dart';
-import 'signup_page.dart';
-import 'profile_page.dart';
-import 'test_page.dart';
-import 'info_page.dart';
+
+import 'package:mentra_app/pages/chat/chat_page.dart';
+import 'package:mentra_app/pages/dairy/detail/dairy_detail_page.dart';
+import 'package:mentra_app/pages/dairy/write/dairy_write_page.dart';
+import 'package:mentra_app/pages/home/home_page.dart';
+import 'package:mentra_app/pages/info/info_page.dart';
+import 'package:mentra_app/pages/login/login_page.dart';
+import 'package:mentra_app/pages/mood/mood_graph_page.dart';
+import 'package:mentra_app/pages/profile/profile_page.dart';
+import 'package:mentra_app/pages/signup/signup_page.dart';
+import 'package:mentra_app/pages/splash/splash_page.dart';
+import 'package:mentra_app/pages/test/mbti_test_page.dart';
+
 import 'mbti/result_screen.dart';
 import 'mbti/personality_data.dart';
-import 'mood_graph_page.dart';
 
 class AppRoutes {
   static final Map<String, WidgetBuilder> routes = {
@@ -32,23 +34,7 @@ class AppRoutes {
       return DiaryDetailPage(diaryEntry: args);
     },
     '/infoPage': (context) => const InfoPage(),
-    '/resultPage': (context) => ResultScreen(
-      onRetakeTest: () {
-        // Just for testing — go back or show a snackbar
-        print("Retake test pressed!");
-      },
-      borderRadius: BorderRadius.circular(12),
-      scores: {
-        'E': 12,
-        'I': 8,
-        'N': 15,
-        'S': 5,
-        'T': 10,
-        'F': 14,
-        'J': 9,
-        'P': 11,
-      },
-    ),
+    '/resultPage': (context) => ResultScreen(scores: {}, onRetakeTest: () {}),
     '/moodGraph': (context) => const MoodGraphPage(),
   };
 }

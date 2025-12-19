@@ -14,15 +14,11 @@ class ResultScreen extends StatelessWidget {
   final Map<String, int> scores;
   final VoidCallback onRetakeTest;
 
-  // Firestore veya navigasyon için gerekli diğer parametreleri koruyalım
-  final BorderRadius borderRadius;
-
   const ResultScreen({
-    Key? key,
+    super.key,
     required this.scores,
     required this.onRetakeTest,
-    required this.borderRadius,
-  }) : super(key: key);
+  });
 
   // 1. Sonuç hesaplama ve veriyi alma işlemi
   PersonalityResult _calculateAndGetResult() {
@@ -109,8 +105,7 @@ class ResultScreen extends StatelessWidget {
                   border: Border.all(color: finalResult.color, width: 2),
                 ),
                 child: Text(
-                  finalResult
-                      .description, // <-- personality_data.dart'tan gelen AÇIKLAMA
+                  finalResult.description,
                   style: const TextStyle(fontSize: 18, height: 1.5),
                   textAlign: TextAlign.justify,
                 ),
@@ -124,6 +119,24 @@ class ResultScreen extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: finalResult.color,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              // Retake Test Button (isteğe bağlı)
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: onRetakeTest,
+                icon: const Icon(Icons.refresh),
+                label: const Text(
+                  'Retake Test',
+                  style: TextStyle(fontSize: 18),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: finalResult.color,
+                  side: BorderSide(color: finalResult.color),
                   padding: const EdgeInsets.symmetric(vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),

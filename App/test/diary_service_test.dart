@@ -1,11 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mentra_app/services/diary_service.dart';
+import 'package:mentra_app/services/dairy/dairy_service.dart';
+import 'package:mentra_app/services/firebase_diary/firebase_diary_service.dart';
 
 void main() {
   group('DiaryService Tests', () {
     test('should save and retrieve diary entries', () async {
       // Clear any existing entries first
-      await DiaryService.clearAllEntries();
+      await FirebaseDiaryService.clearAllEntries();
 
       // Create a test diary entry
       final testEntry = {
@@ -30,7 +31,7 @@ void main() {
 
     test('should delete diary entry', () async {
       // Clear any existing entries first
-      await DiaryService.clearAllEntries();
+      await FirebaseDiaryService.clearAllEntries();
 
       // Create and save a test entry
       final testEntry = {
