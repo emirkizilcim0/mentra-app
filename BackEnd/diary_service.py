@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class DiaryPsychologistAdvisor:
     """Psychologist class to provide advice based on user diaries"""
     
-    def __init__(self, api_key: str = None, model: str = "models/gemini-1.5-flash"):
+    def __init__(self, api_key: str = None, model: str = "models/gemini-1.5-flash-latest"):
         # Use environment variable for API key if not provided
         if api_key is None:
             api_key=os.getenv("GEMINI_API_KEY")
@@ -46,11 +46,11 @@ class DiaryPsychologistAdvisor:
         """
     def _initialize_model(self, model_name: str = None):
         models_to_try = [
-            "models/gemini-1.5-flash",
             model_name,
             "models/gemini-1.5-flash-latest",
             "models/gemini-1.5-pro-latest",
         ]
+
     
         # Remove None values
         models_to_try = [m for m in models_to_try if m]

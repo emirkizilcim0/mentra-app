@@ -24,8 +24,8 @@ class PsychologistAdvisor:
     def __init__(self, config):
         self.config = config or get_config()
         genai.configure(api_key=self.config['API_KEY'])
-        model_name = "models/gemini-1.5-flash"
-        
+        model_name = "models/gemini-1.5-flash-latest"
+
         self.model = genai.GenerativeModel(model_name)
 
         

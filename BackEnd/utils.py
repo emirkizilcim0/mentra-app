@@ -43,7 +43,7 @@ def get_config():
     base_dir = Path.cwd()  # <-- ensures paths are relative to where script is run
     return {
         'API_KEY': os.getenv("GEMINI_API_KEY"),   # User yours please...
-        'CHAT_MODEL': os.getenv('TUTOR_MODEL', 'models/gemini-2.0-flash'),
+        'CHAT_MODEL': os.getenv('TUTOR_MODEL', 'models/gemini-1.5-flash-latest'),
         'EMBEDDING_MODEL': os.getenv('EMBEDDING_MODEL', 'models/embedding-001'),
         'DATA_DIR': base_dir / 'data',                                              # file path as args in ingest.py
         'SAVE_DATA_DIR': base_dir / 'saved_data',

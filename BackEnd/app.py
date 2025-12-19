@@ -21,7 +21,7 @@ def get_psychologist():
 
         psychologist = DiaryPsychologistAdvisor(
             api_key=api_key,
-            model="models/gemini-1.5-flash"
+            model="models/gemini-1.5-flash-latest"
         )
 
     return psychologist
