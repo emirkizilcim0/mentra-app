@@ -9,6 +9,25 @@ import logging
 import json  
 from diary_service import DiaryPsychologistAdvisor
 
+psychologist = None
+
+def get_psychologist():
+    global psychologist
+
+    if psychologist is None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY not set")
+
+        psychologist = DiaryPsychologistAdvisor(
+            api_key=api_key,
+            model="models/gemini-1.5-flash"  # ✅ supported
+        )
+
+    return psychologist
+
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -96,12 +115,6 @@ class AnalysisResponse(BaseModel):
     analysis_date: str
     diaries_analyzed: int
 
-# Initialize the psychologist advisor
-psychologist = DiaryPsychologistAdvisor(
-    api_key=os.getenv("GEMINI_API_KEY"),
-    model="models/gemini-2.0-flash"
-)
-
 @app.get("/")
 async def home():
     return {
@@ -187,12 +200,15 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         diary_contents = [diary["content"] for diary in diaries]
         
         # Get psychological advice (this will handle empty diaries gracefully)
-        analysis_result = psychologist.analyze_diaries(
+        advisor = get_psychologist()
+
+        analysis_result = advisor.analyze_diaries(
             diaries=diary_contents,
             character_type=request.character_type,
             sign=request.sign,
             birth_map=request.birth_map
         )
+
         
         if analysis_result["status"] == "error":
             # Even if there's an error, we return the fallback advice
