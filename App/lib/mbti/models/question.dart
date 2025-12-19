@@ -36,4 +36,6 @@ class Question {
       choices: choices,
     );
   }
+
+  void operator [](String other) {}
 }

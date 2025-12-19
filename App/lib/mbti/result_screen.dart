@@ -1,146 +1,159 @@
-// result_screen.dart
-
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart'; // 1. Provider paketini ekledik
+import 'package:mentra_app/providers/theme_provider.dart'; // 2. ThemeProvider'ı import ettik
+import 'package:mentra_app/mbti/personality_data.dart';
+import 'package:mentra_app/pages/home/home_page.dart';
 
-// Diğer dosyalardan import'lar
-import '../mbti/personality_data.dart'; // PersonalityResult modeli ve personalityData map'i burada
-import 'services/mbti_calculator.dart'; // MbtiCalculator sınıfı burada
-
-// ⚠️ NOT: Bu widget'a sadece ham skorları gönderiyoruz. Hesaplamayı burada yapacak.
 class ResultScreen extends StatelessWidget {
-  // MbtiCalculator'dan gelen ham skorlar haritası
-  final Map<String, int> scores;
-  final VoidCallback onRetakeTest;
+  final String mbtiResult;
 
-  const ResultScreen({
-    super.key,
-    required this.scores,
-    required this.onRetakeTest,
-  });
-
-  // 1. Sonuç hesaplama ve veriyi alma işlemi
-  PersonalityResult _calculateAndGetResult() {
-    // MbtiCalculator nesnesi oluşturuluyor
-    final calculator = MbtiCalculator();
-
-    // Ham skorlar calculator'a atanıyor
-    calculator.scores = scores;
-
-    // Sonuç hesaplanıyor ve PersonalityResult nesnesi çekiliyor
-    return calculator.getPersonalityResult();
-  }
-
-  // 2. Firestore'a kaydetme metodu (Daha önceki kodunuzdan korundu)
-  Future<void> _saveResultToFirestore(
-    BuildContext context,
-    PersonalityResult result,
-  ) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'mbtiTitle': result.title,
-        'mbtiDesc': result.description,
-        'mbtiType': result.type,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Kayıttan sonra ana sayfaya yönlendirme
-      Navigator.pushNamed(context, "/home");
-    } catch (e) {
-      print("Error saving MBTI result: $e");
-      Navigator.pushNamed(context, "/home");
-    }
-  }
+  const ResultScreen({super.key, required this.mbtiResult});
 
   @override
   Widget build(BuildContext context) {
-    // 🎉 EKRAN İÇİNDE HESAPLAMA YAPILIYOR
-    final PersonalityResult finalResult = _calculateAndGetResult();
+    // 3. ThemeProvider'dan mevcut tema durumunu alıyoruz
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDark = themeProvider.isDarkMode;
+
+    final data = personalityData[mbtiResult];
+    final title = data?.title ?? "Unknown Type";
+    final description = data?.description ?? "No description available.";
+
+    // 4. Renkleri dinamik olarak belirliyoruz
+    final backgroundColor = isDark
+        ? const Color(0xFF121212)
+        : const Color(0xFFFDF2F8);
+    final primaryTextColor = isDark ? Colors.white : Colors.black87;
+    final secondaryTextColor = isDark ? Colors.white70 : Colors.grey;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final descriptionBoxColor = isDark
+        ? Colors.pink[900]!.withOpacity(0.2)
+        : const Color(0xFFFFE4E6);
+    final circleTextColor = isDark
+        ? const Color(0xFFD68DA8)
+        : Colors.deepPurple;
+    final buttonColor = isDark ? Colors.grey[800] : Colors.grey[300];
 
     return Scaffold(
+      backgroundColor: backgroundColor,
+      // --- AppBar Kısmı ---
       appBar: AppBar(
-        title: const Text('Test Result'),
-        backgroundColor: finalResult.color.withOpacity(0.8),
         automaticallyImplyLeading: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+        titleSpacing: 24,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Mentra",
+              style: GoogleFonts.pacifico(
+                fontSize: 28,
+                color: primaryTextColor, // Dinamik renk
+              ),
+            ),
+            Text(
+              "Test Result",
+              style: TextStyle(
+                color: secondaryTextColor, // Dinamik renk
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+
+      // --- Body Kısmı ---
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: SizedBox(
+          width: double.infinity,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              // Kişilik Tipi Kodu (Örn: ENFJ)
-              Text(
-                finalResult.type, // <-- personality_data.dart'tan gelen TIP
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 80,
-                  fontWeight: FontWeight.w900,
-                  color: finalResult.color,
-                ),
-              ),
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
               const SizedBox(height: 10),
-              // Kişilik Tipi Adı (Örn: Kahraman)
-              Text(
-                finalResult.title, // <-- personality_data.dart'tan gelen BAŞLIK
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: finalResult.color,
-                ),
-              ),
-              const SizedBox(height: 30),
-              // Kişilik Açıklaması (ANLAMI)
+              // MBTI Sonuç Kutusu (Daire)
               Container(
-                padding: const EdgeInsets.all(20.0),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: finalResult.color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: finalResult.color, width: 2),
+                  color: cardColor, // Dinamik renk
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: isDark ? Colors.black45 : Colors.black12,
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
                 ),
                 child: Text(
-                  finalResult.description,
-                  style: const TextStyle(fontSize: 18, height: 1.5),
-                  textAlign: TextAlign.justify,
+                  mbtiResult,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: circleTextColor, // Dinamik renk
+                  ),
                 ),
               ),
-              const SizedBox(height: 50),
-              // Continue Button
-              ElevatedButton.icon(
-                onPressed: () => _saveResultToFirestore(context, finalResult),
-                icon: const Icon(Icons.check),
-                label: const Text('Continue', style: TextStyle(fontSize: 18)),
+              const SizedBox(height: 24),
+
+              // Başlık
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: primaryTextColor, // Dinamik renk
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+
+              // Açıklama Kutusu
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: descriptionBoxColor, // Dinamik renk
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: primaryTextColor, // Dinamik renk
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // Continue Butonu
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomePage()),
+                    (route) => false,
+                  );
+                },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: finalResult.color,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  backgroundColor: buttonColor, // Dinamik renk
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 12,
+                  ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ),
-              ),
-              // Retake Test Button (isteğe bağlı)
-              const SizedBox(height: 20),
-              OutlinedButton.icon(
-                onPressed: onRetakeTest,
-                icon: const Icon(Icons.refresh),
-                label: const Text(
-                  'Retake Test',
-                  style: TextStyle(fontSize: 18),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: finalResult.color,
-                  side: BorderSide(color: finalResult.color),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                child: Text(
+                  "Continue ->",
+                  style: TextStyle(color: primaryTextColor), // Dinamik renk
                 ),
               ),
             ],

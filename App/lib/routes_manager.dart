@@ -34,7 +34,7 @@ class AppRoutes {
       return DiaryDetailPage(diaryEntry: args);
     },
     '/infoPage': (context) => const InfoPage(),
-    '/resultPage': (context) => ResultScreen(scores: {}, onRetakeTest: () {}),
+    '/resultPage': (context) => ResultScreen(mbtiResult: ''),
     '/moodGraph': (context) => const MoodGraphPage(),
   };
 }

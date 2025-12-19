@@ -2,10 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mentra_app/services/auth/auth_service.dart';
 
-import 'package:mentra_app/services/dairy/dairy_auth.dart';
-import 'package:mentra_app/pages/signupDetails/zodiac_calculator.dart'; // Eğer ayrı dosyadaysa
-// Veya ZodiacCalculator'ı buraya dahil edebilirsin:
-// import 'package:mentra_app/pages/signup/signup_details_page.dart'; (Eğer orada tanımlıysa)
+// ZodiacCalculator importuna artık gerek kalmadı çünkü AuthService hallediyor
+// ama kodunda hata vermesin diye durabilir veya silebilirsin.
 
 class SignupSubmissionLogic {
   static Future<bool> signUpAndSaveData(
@@ -16,27 +14,38 @@ class SignupSubmissionLogic {
     DateTime bd,
   ) async {
     try {
-      final user = await AuthService().signUpWithEmail(email, pass);
+      // DÜZELTME BURADA:
+      // AuthService artık (email, password, name, birthDate) istiyor.
+      // First ve Last name'i birleştirip gönderiyoruz.
+      final user = await AuthService().signUpWithEmail(
+        email,
+        pass,
+        "$first $last", // İsim birleştirme
+        bd, // Doğum tarihi
+      );
+
       if (user == null) return false;
 
-      // Basit bir Zodiac hesaplama (Eğer import sorunu yaşarsan burayı kullanabilirsin)
-      String getZodiac(DateTime d) {
-        // ... burç hesaplama kodu ...
-        // Şimdilik ZodiacCalculator.getZodiac(bd) kullandığını varsayıyorum.
-        return "Aries"; // Geçici, import düzgünse ZodiacCalculator.getZodiac(bd) kullan.
-      }
+      // AuthService zaten burcu hesaplayıp kaydettiği için
+      // burada tekrar hesaplamaya veya "Unknown" yazmaya gerek yok.
+      // O yüzden getZodiac fonksiyonunu sildim/yorum satırı yaptım.
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'firstName': first,
-        'lastName': last,
-        'birthDate': bd.toIso8601String(),
-        // 'zodiac': ZodiacCalculator.getZodiac(bd), // Import hatası alırsan burayı kontrol et
-        'zodiac': "Unknown", // Geçici
-        'email': email,
-        'createdAt': FieldValue.serverTimestamp(),
-        'mbtiTitle': "No result yet",
-        'mbtiDesc': "",
-      });
+      // Ekstra bilgileri (MBTI, First/Last Name gibi) kaydetmek için update yapıyoruz.
+      // SetOptions(merge: true) kullandık ki AuthService'in yazdığı 'sign' (burç) silinmesin.
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+        {
+          'firstName': first,
+          'lastName': last,
+          'birthDate': bd.toIso8601String(),
+          // 'zodiac': "Unknown", // BUNU SİLDİK (AuthService doğrusunu kaydetti, üzerine yazmayalım)
+          'email': email,
+          // 'createdAt': FieldValue.serverTimestamp(), // AuthService zaten ekliyor, gerek yok
+          'mbtiTitle': "No result yet",
+          'mbtiDesc': "",
+        },
+        SetOptions(merge: true),
+      ); // ÖNEMLİ: Merge true demezsek önceki veriyi siler
+
       return true;
     } catch (e) {
       print("Error: $e");

@@ -18,6 +18,10 @@ class UserProfileProvider with ChangeNotifier {
   // Getters
   String get firstName => _firstName;
   String get lastName => _lastName;
+  // Eğer isim "name" olarak kayıtlıysa ve firstName boşsa, kullanıcıya isimsiz görünmemesi için logic
+  String get fullName =>
+      _firstName.isNotEmpty ? "$_firstName $_lastName".trim() : _firstName;
+
   String get zodiac => _zodiac;
   String get birthDate => _birthDate;
   String get mbtiType => _mbtiType;
@@ -27,7 +31,9 @@ class UserProfileProvider with ChangeNotifier {
 
   // User data'yi önceden yükle
   Future<void> preloadUserData() async {
-    if (_isLoaded) return; // Zaten yüklenmişse tekrar yükleme
+    // isLoaded kontrolünü kaldırdım veya false ise çalışsın diye bıraktım
+    // Bazen veriler güncellendiğinde tekrar çekmek gerekebilir.
+    if (_isLoaded) return;
 
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -36,13 +42,31 @@ class UserProfileProvider with ChangeNotifier {
 
         if (doc.exists) {
           final data = doc.data()!;
-          _firstName = data['firstName'] ?? "";
-          _lastName = data['lastName'] ?? "";
-          _zodiac = data['zodiac'] ?? "";
-          _birthDate = data['birthDate'] ?? "";
-          _mbtiType = data['mbtiType'] ?? "";
+
+          // --- DÜZELTME BURADA BAŞLIYOR ---
+          // 1. İsim Kontrolü: 'firstName' yoksa eski 'name' alanına bak
+          if (data.containsKey('firstName')) {
+            _firstName = data['firstName'] ?? "";
+            _lastName = data['lastName'] ?? "";
+          } else {
+            // Eski veri yapısı: Sadece 'name' var
+            _firstName = data['name'] ?? "";
+            _lastName = ""; // Eski yapıda soyadı ayrı değilse boş bırakabiliriz
+          }
+
+          // 2. Burç Kontrolü: 'zodiac' yoksa 'sign' alanına bak
+          _zodiac = data['zodiac'] ?? data['sign'] ?? "";
+
+          // 3. Tarih
+          _birthDate = data['birthDate'] ?? data['birthDateStr'] ?? "";
+
+          // 4. MBTI Kontrolü: 'mbtiType' yoksa 'mbtiResult' alanına bak
+          _mbtiType = data['mbtiType'] ?? data['mbtiResult'] ?? "";
+
+          // Title ve Desc varsa al, yoksa varsayılan boş bırak
           _mbtiTitle = data['mbtiTitle'] ?? "";
           _mbtiDesc = data['mbtiDesc'] ?? "";
+          // --- DÜZELTME BİTTİ ---
 
           _isLoaded = true;
           notifyListeners();
@@ -70,6 +94,8 @@ class UserProfileProvider with ChangeNotifier {
         if (firstName != null) {
           _firstName = firstName;
           updateData['firstName'] = firstName;
+          // Eski uygulamalar bozulmasın diye 'name' alanını da güncelleyebilirsin (Opsiyonel)
+          updateData['name'] = firstName;
         }
         if (lastName != null) {
           _lastName = lastName;

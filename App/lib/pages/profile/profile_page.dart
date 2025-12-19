@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:mentra_app/pages/profile/birth_chart_section.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mentra_app/pages/profile/daily_horoscope_section.dart';
 import 'package:mentra_app/pages/profile/logout_button.dart';
 import 'package:mentra_app/pages/profile/mbti_section.dart';
 import 'package:mentra_app/pages/profile/profile_avatar_section.dart';
@@ -26,7 +28,10 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final nameCtrl = TextEditingController();
   final signCtrl = TextEditingController();
-  String mbtiTitle = "No result", mbtiDesc = "", mbtiType = "", birthDate = "";
+
+  // Varsayılan değerleri "Loading..." veya boş olarak ayarladım
+  String mbtiTitle = "Analiz Ediliyor...", mbtiDesc = "", mbtiType = "";
+  String birthDate = "";
   DateTime? selectedDate;
   bool loading = true;
 
@@ -37,17 +42,87 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _load() async {
-    final data = await ProfileLogic.loadData();
-    setState(() {
-      nameCtrl.text = data['name'] ?? "";
-      signCtrl.text = data['zodiac'] ?? "";
-      birthDate = data['birthDateStr'] ?? "";
-      selectedDate = data['selectedDate'];
-      mbtiTitle = data['mbtiTitle'] ?? "No result";
-      mbtiDesc = data['mbtiDesc'] ?? "";
-      mbtiType = data['mbtiType'] ?? "";
-      loading = false;
-    });
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (mounted && doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+
+        setState(() {
+          // 1. İsim
+          String foundName = "";
+          if (data['firstName'] != null &&
+              data['firstName'].toString().isNotEmpty) {
+            foundName = data['firstName'];
+            if (data['lastName'] != null) foundName += " ${data['lastName']}";
+          } else if (data['name'] != null) {
+            foundName = data['name'];
+          } else if (data['username'] != null) {
+            foundName = data['username'];
+          }
+          nameCtrl.text = foundName;
+
+          // 2. Burç
+          signCtrl.text = data['sign'] ?? data['zodiac'] ?? "";
+
+          // 3. Tarih
+          dynamic birthData = data['birthDate'] ?? data['birthDateStr'];
+          DateTime? dt;
+
+          try {
+            if (birthData is Timestamp) {
+              dt = birthData.toDate();
+            } else if (birthData is String) {
+              dt = DateTime.tryParse(birthData);
+              dt ??= _tryParseFormattedDate(birthData);
+            }
+
+            if (dt != null) {
+              birthDate = DateFormat('d MMMM yyyy').format(dt);
+              selectedDate = dt;
+            }
+          } catch (e) {
+            debugPrint("Date parsing error: $e");
+            birthDate = birthData?.toString() ?? "";
+          }
+
+          // 4. MBTI (GÜNCELLENMİŞ KISIM)
+          // "Testi Çöz" mantığını kaldırdık. Kullanıcının zaten bir sonucu olmalı.
+          if (data['mbtiResult'] != null || data['mbtiType'] != null) {
+            mbtiTitle = data['mbtiTitle'] ?? "Sonucunuz";
+            mbtiDesc = data['mbtiDesc'] ?? "";
+            mbtiType = data['mbtiType'] ?? data['mbtiResult'] ?? "";
+          } else {
+            // Veri gelmezse fallback (Yine de "Testi Çöz" demiyoruz)
+            mbtiTitle = "MBTI Result";
+            mbtiDesc = "";
+            mbtiType = "Unknown";
+          }
+
+          loading = false;
+        });
+      } else {
+        if (mounted) setState(() => loading = false);
+      }
+    } catch (e) {
+      debugPrint("Veri yükleme hatası: $e");
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  DateTime? _tryParseFormattedDate(String dateStr) {
+    if (dateStr.isEmpty) return null;
+    try {
+      return DateFormat('d MMMM yyyy').parse(dateStr);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _pickDate() async {
@@ -59,13 +134,34 @@ class _ProfilePageState extends State<ProfilePage> {
       lastDate: now,
     );
     if (picked != null) {
-      final newZodiac = getZodiac(picked);
-      await ProfileLogic.updateBirthData(picked, newZodiac);
-      setState(() {
-        selectedDate = picked;
-        birthDate = DateFormat('d MMMM yyyy').format(picked);
-        signCtrl.text = newZodiac;
-      });
+      try {
+        final newZodiac = getZodiac(picked);
+        await ProfileLogic.updateBirthData(picked, newZodiac);
+
+        if (mounted) {
+          setState(() {
+            selectedDate = picked;
+            birthDate = DateFormat('d MMMM yyyy').format(picked);
+            signCtrl.text = newZodiac;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Birth date updated successfully!"),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Failed to update birth date."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -74,8 +170,9 @@ class _ProfilePageState extends State<ProfilePage> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDark = themeProvider.isDarkMode;
 
-    if (loading)
+    if (loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -98,7 +195,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         const SizedBox(height: 12),
                         ProfileField(
                           label: "Zodiac",
-                          value: signCtrl.text,
+                          value: signCtrl.text.isNotEmpty
+                              ? signCtrl.text
+                              : "Not set",
                           icon: Icons.stars,
                           isDark: isDark,
                         ),
@@ -110,13 +209,16 @@ class _ProfilePageState extends State<ProfilePage> {
                           onTap: _pickDate,
                         ),
                         const SizedBox(height: 20),
+
+                        // MBTI Section'ı sadece veri varsa veya varsayılan değerle göster
                         MbtiSection(
                           title: mbtiTitle,
                           desc: mbtiDesc,
                           type: mbtiType,
                         ),
+
                         const SizedBox(height: 25),
-                        const BirthChartSection(),
+                        const DailyHoroscopeSection(),
                         const LogoutButton(),
                       ],
                     ),
