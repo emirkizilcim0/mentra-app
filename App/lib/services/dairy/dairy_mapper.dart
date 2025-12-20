@@ -22,6 +22,10 @@ class DiaryMapper {
       'diaries_analyzed': item['diaries_analyzed'],
       'date': item['date'],
       'formattedDate': DiaryHelpers.formatDate(item['date']),
+      'mood': item['mood'] ?? 'Calm', // Add mood field with default
+      'character_type': item['character_type'] ?? '', // Add character type
+      'sign': item['sign'] ?? '', // Add zodiac sign
+      'birth_map': item['birth_map'] ?? '', // Add birth map
     };
   }
 }

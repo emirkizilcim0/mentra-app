@@ -16,11 +16,11 @@ class RangeSelector extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildChip('Hafta', MoodRange.week),
+        _buildChip('Weel', MoodRange.week),
         const SizedBox(width: 8),
-        _buildChip('Ay', MoodRange.month),
+        _buildChip('Month', MoodRange.month),
         const SizedBox(width: 8),
-        _buildChip('Yıl', MoodRange.year),
+        _buildChip('Year', MoodRange.year),
       ],
     );
   }

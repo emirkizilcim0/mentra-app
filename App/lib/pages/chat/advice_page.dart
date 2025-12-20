@@ -36,7 +36,7 @@ class _AdvicePageState extends State<AdvicePage> {
     } catch (e) {
       setState(() {
         isLoading = false;
-        errorMessage = 'Tavsiyeler yüklenemedi.';
+        errorMessage = "Advices aren't available at the moment.";
       });
     }
   }

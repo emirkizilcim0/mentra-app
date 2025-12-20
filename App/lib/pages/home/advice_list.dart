@@ -20,12 +20,19 @@ class AdviceList extends StatelessWidget {
         final item = items[index];
         final advice = item['advice'] ?? '';
         final title = getTitleFromAdvice(advice);
+        final mood = item['mood'] ?? 'Calm'; // Get mood from item
         final percent = estimateHappinessPercent(advice);
+
+        // Use mood-based emoji if available, otherwise fallback to sentiment
+        final emoji = mood != 'Calm'
+            ? _getEmojiForMood(mood)
+            : getEmojiFor(percent);
 
         return AdviceCard(
           date: item['formattedDate'] ?? item['date'] ?? '',
           title: title,
-          emoji: getEmojiFor(percent),
+          mood: mood, // Pass mood to card
+          emoji: emoji,
           isDark: isDark,
           onTap: () => Navigator.push(
             context,
@@ -37,5 +44,25 @@ class AdviceList extends StatelessWidget {
         );
       },
     );
+  }
+
+  // Helper function to get emoji based on mood
+  String _getEmojiForMood(String mood) {
+    switch (mood.toLowerCase()) {
+      case 'happy':
+        return '😊';
+      case 'sad':
+        return '😢';
+      case 'anxious':
+        return '😰';
+      case 'angry':
+        return '😠';
+      case 'calm':
+        return '😌';
+      case 'confused':
+        return '😕';
+      default:
+        return '😊';
+    }
   }
 }

@@ -22,6 +22,18 @@ class DiaryPsychologistAdvisor:
         self.advice_prompt = """
         You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
 
+        Analyze the user's diary entries and do TWO things:
+        1) Classify the user's overall emotional mood
+        2) Provide psychological advice
+
+        ### MOOD LABELS (choose ONE only):
+        Happy
+        Sad
+        Anxious
+        Angry
+        Calm
+        Confused
+
         USER PROFILE:
         - MBTI Personality: {character_type}
         - Zodiac Sign: {sign}
@@ -43,45 +55,60 @@ class DiaryPsychologistAdvisor:
         """
 
     def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str = None) -> Dict[str, Any]:
-        """Analyze user diaries and provide psychological advice"""
-        try:
-            if not diaries:
-                return self._provide_general_advice(character_type, sign)
-            
-            # Prepare diary text (limit length to avoid token limits)
-            combined_diaries = self._prepare_diary_text(diaries)
-            
-            prompt = self.advice_prompt.format(
-                diary_text=combined_diaries,
-                character_type=character_type,
-                sign=sign
-            )
-            
-            # Generate content using the new SDK
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
+            """Analyze user diaries and provide psychological advice"""
+            try:
+                if not diaries:
+                    return self._provide_general_advice(character_type, sign)
 
-            
-            return {
-                "advice": response.text,
-                "analysis_date": datetime.utcnow().isoformat(),
-                "diaries_analyzed": len(diaries),
-                "model_used": self.model_name,
-                "status": "success"
-            }
-            
-        except Exception as e:
-            logger.error(f"Error analyzing diaries: {str(e)}")
-            return {
-                "advice": self._get_fallback_advice(character_type, sign),
-                "analysis_date": datetime.utcnow().isoformat(),
-                "diaries_analyzed": len(diaries) if diaries else 0,
-                "status": "error",
-                "error": str(e)
-            }
+                # Prepare diary text (limit length to avoid token limits)
+                combined_diaries = self._prepare_diary_text(diaries)
 
+                prompt = self.advice_prompt.format(
+                    diary_text=combined_diaries,
+                    character_type=character_type,
+                    sign=sign
+                )
+
+                # Generate content using the new SDK
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
+
+                # Extract mood from the response
+                mood = self._extract_mood_from_response(response.text)
+
+                return {
+                    "mood": mood,
+                    "advice": response.text,
+                    "analysis_date": datetime.utcnow().isoformat(),
+                    "diaries_analyzed": len(diaries),
+                    "model_used": self.model_name,
+                    "status": "success"
+                }
+
+            except Exception as e:
+                logger.error(f"Error analyzing diaries: {str(e)}")
+                return {
+                    "advice": self._get_fallback_advice(character_type, sign),
+                    "analysis_date": datetime.utcnow().isoformat(),
+                    "diaries_analyzed": len(diaries) if diaries else 0,
+                    "status": "error",
+                    "error": str(e)
+                }
+
+    def _extract_mood_from_response(self, response_text: str) -> str:
+        """Extract mood label from the AI response"""
+        # Mood labels to look for
+        mood_labels = ["Happy", "Sad", "Anxious", "Angry", "Calm", "Confused"]
+        # Check for each mood label in the response
+        response_lower = response_text.lower()
+        for mood in mood_labels:
+            if mood.lower() in response_lower:
+                return mood
+        # Default to "Calm" if no mood found
+        return "Calm"
+    
     def _prepare_diary_text(self, diaries: List[str]) -> str:
         """Prepare diary text for analysis, limiting total length"""
         # Take only recent diaries and limit each entry length
