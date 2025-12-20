@@ -13,25 +13,51 @@ class DiaryRepoHistory {
         '${DiaryConfig.baseUrl}/analysis/history/$uid?limit=$limit',
       );
 
+      print('🔍 Fetching history from: $uri');
+
       final response = await http.get(uri, headers: DiaryConfig.getHeaders);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+
+        // Debug: Print raw response
+        print('📦 Raw API response received');
+        print('📊 Response body length: ${response.body.length}');
+
+        // Pretty print the response for debugging
+        final prettyJson = JsonEncoder.withIndent('  ').convert(data);
+        print('📄 Response data:\n$prettyJson');
+
         final List<dynamic> list = data['analyses'] ?? [];
+        print('📊 Found ${list.length} analyses');
 
         // Map each analysis item with mood extraction
         return list.map((e) {
+          print('🔍 Processing analysis item:');
+          print('   Raw item keys: ${e.keys.toList()}');
+          print('   Raw mood value: "${e['mood']}"');
+
           final mapped = DiaryMapper.mapAnalysis(e);
+          print('   Mapped mood: "${mapped['mood']}"');
 
           // Extract mood from the advice text if not already present
-          if (mapped['mood'] == null || mapped['mood'] == '') {
-            mapped['mood'] = _extractMoodFromAdvice(mapped['advice'] ?? '');
+          if (mapped['mood'] == null ||
+              mapped['mood'] == '' ||
+              mapped['mood'] == 'Calm') {
+            print('   ⚠️ Mood missing or default, extracting from advice...');
+            final extractedMood = _extractMoodFromAdvice(
+              mapped['advice'] ?? '',
+            );
+            mapped['mood'] = extractedMood;
+            print('   Extracted mood: $extractedMood');
           }
 
           // Add formatted date if not present
           if (mapped['date'] != null && mapped['formattedDate'] == null) {
             mapped['formattedDate'] = _formatDate(mapped['date']!);
           }
+
+          print('   ✅ Final mood: ${mapped['mood']}');
 
           return mapped;
         }).toList();

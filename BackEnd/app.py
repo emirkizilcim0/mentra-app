@@ -84,7 +84,54 @@ async def create_db_pool():
             CREATE INDEX IF NOT EXISTS idx_user_diaries_user_id ON user_diaries(user_id);
             CREATE INDEX IF NOT EXISTS idx_user_diaries_created_at ON user_diaries(created_at);
         ''')
-    logger.info("Database tables created")
+        
+        # Update existing records to have mood in analysis_data
+        await conn.execute('''
+            UPDATE user_analyses 
+            SET analysis_data = jsonb_set(
+                COALESCE(analysis_data, '{}'::jsonb),
+                '{mood}',
+                CASE
+                    WHEN advice_text ILIKE '%anxious%' OR advice_text ILIKE '%anxiety%' OR advice_text ILIKE '%stress%' OR advice_text ILIKE '%worried%' OR advice_text ILIKE '%nervous%' THEN '"Anxious"'
+                    WHEN advice_text ILIKE '%happy%' OR advice_text ILIKE '%joy%' OR advice_text ILIKE '%excited%' OR advice_text ILIKE '%great%' OR advice_text ILIKE '%wonderful%' THEN '"Happy"'
+                    WHEN advice_text ILIKE '%sad%' OR advice_text ILIKE '%depressed%' OR advice_text ILIKE '%down%' OR advice_text ILIKE '%unhappy%' OR advice_text ILIKE '%grieving%' THEN '"Sad"'
+                    WHEN advice_text ILIKE '%angry%' OR advice_text ILIKE '%anger%' OR advice_text ILIKE '%frustrated%' OR advice_text ILIKE '%irritated%' OR advice_text ILIKE '%upset%' THEN '"Angry"'
+                    WHEN advice_text ILIKE '%calm%' OR advice_text ILIKE '%peaceful%' OR advice_text ILIKE '%relaxed%' OR advice_text ILIKE '%serene%' OR advice_text ILIKE '%tranquil%' THEN '"Calm"'
+                    WHEN advice_text ILIKE '%confused%' OR advice_text ILIKE '%uncertain%' OR advice_text ILIKE '%unsure%' OR advice_text ILIKE '%indecisive%' THEN '"Confused"'
+                    ELSE '"Calm"'
+                END::jsonb
+            )
+            WHERE analysis_data IS NULL OR analysis_data->>'mood' IS NULL OR analysis_data->>'mood' = '';
+        ''')
+        
+        # Also add character_type, sign, and birth_map if missing
+        await conn.execute('''
+            UPDATE user_analyses 
+            SET analysis_data = jsonb_set(
+                analysis_data,
+                '{character_type}',
+                '"Unknown"'
+            )
+            WHERE analysis_data->>'character_type' IS NULL;
+            
+            UPDATE user_analyses 
+            SET analysis_data = jsonb_set(
+                analysis_data,
+                '{sign}',
+                '"Unknown"'
+            )
+            WHERE analysis_data->>'sign' IS NULL;
+            
+            UPDATE user_analyses 
+            SET analysis_data = jsonb_set(
+                analysis_data,
+                '{birth_map}',
+                '"Unknown"'
+            )
+            WHERE analysis_data->>'birth_map' IS NULL;
+        ''')
+        
+    logger.info("Database tables created and existing data updated with mood extraction")
 
 @app.on_event("startup")
 async def startup_event():
@@ -110,6 +157,7 @@ class DiaryAnalysisRequest(BaseModel):
 
 class AnalysisResponse(BaseModel):
     advice: str
+    mood: str = "Calm" 
     status: str
     analysis_date: str
     diaries_analyzed: int
@@ -208,16 +256,16 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             birth_map=request.birth_map
         )
 
-        
         if analysis_result["status"] == "error":
             # Even if there's an error, we return the fallback advice
             logger.error(f"Analysis error: {analysis_result.get('error')}")
         
-        # FIX: Convert the analysis_data to JSON string using json.dumps()
+        # FIX: Save the mood in analysis_data!
         analysis_data = json.dumps({
             "character_type": request.character_type,
             "sign": request.sign,
-            "birth_map": request.birth_map
+            "birth_map": request.birth_map,
+            "mood": analysis_result.get("mood", "Calm")  # ADD THIS LINE
         })
         
         # Save the analysis result
@@ -226,24 +274,27 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id
         ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-             len(diaries), analysis_data)  # Now passing JSON string instead of dict
+             len(diaries), analysis_data)
         
-        return AnalysisResponse(
-            advice=analysis_result["advice"],
-            status="success",
-            analysis_date=analysis_result["analysis_date"],
-            diaries_analyzed=analysis_result["diaries_analyzed"]
-        )
+        # Also return the mood in the response
+        return {
+            "advice": analysis_result["advice"],
+            "mood": analysis_result.get("mood", "Calm"),  # Add mood to response
+            "status": "success",
+            "analysis_date": analysis_result["analysis_date"],
+            "diaries_analyzed": analysis_result["diaries_analyzed"]
+        }
         
     except Exception as e:
         logger.error(f"Error analyzing diaries: {e}")
         # Provide a basic fallback response
-        return AnalysisResponse(
-            advice="I'm here to help you with psychological insights! Start by writing your first diary entry to get personalized advice.",
-            status="success",
-            analysis_date=datetime.utcnow().isoformat(),
-            diaries_analyzed=0
-        )
+        return {
+            "advice": "I'm here to help you with psychological insights! Start by writing your first diary entry to get personalized advice.",
+            "mood": "Calm",  # Add default mood
+            "status": "success",
+            "analysis_date": datetime.utcnow().isoformat(),
+            "diaries_analyzed": 0
+        }
 
 @app.get("/analysis/history/{user_id}")
 async def get_analysis_history(user_id: str, limit: int = 10):
@@ -260,18 +311,39 @@ async def get_analysis_history(user_id: str, limit: int = 10):
             LIMIT $2
         ''', user_id, limit)
         
+        result_analyses = []
+        for analysis in analyses:
+            # Parse analysis_data if it exists
+            analysis_data = analysis["analysis_data"]
+            
+            # Extract mood and other fields with defaults
+            mood = "Calm"
+            character_type = "Unknown"
+            sign = "Unknown"
+            birth_map = "Unknown"
+            
+            if analysis_data:
+                # asyncpg returns JSONB as dict automatically
+                mood = analysis_data.get("mood", "Calm")
+                character_type = analysis_data.get("character_type", "Unknown")
+                sign = analysis_data.get("sign", "Unknown")
+                birth_map = analysis_data.get("birth_map", "Unknown")
+            
+            result_analyses.append({
+                "id": analysis["id"],
+                "type": analysis["analysis_type"],
+                "advice": analysis["advice_text"],
+                "diaries_analyzed": analysis["diaries_analyzed"],
+                "date": analysis["created_at"].isoformat(),
+                "analysis_data": analysis_data,
+                "mood": mood,
+                "character_type": character_type,
+                "sign": sign,
+                "birth_map": birth_map
+            })
+        
         return {
-            "analyses": [
-                {
-                    "id": analysis["id"],
-                    "type": analysis["analysis_type"],
-                    "advice": analysis["advice_text"],
-                    "diaries_analyzed": analysis["diaries_analyzed"],
-                    "date": analysis["created_at"].isoformat(),
-                    "analysis_data": analysis["analysis_data"]  # This will be automatically converted from JSONB
-                }
-                for analysis in analyses
-            ]
+            "analyses": result_analyses
         }
         
     except Exception as e:
