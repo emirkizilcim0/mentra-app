@@ -1,6 +1,6 @@
 from typing import List
 from langchain.schema import Document
-import google.generativeai as genai
+from google import genai
 from utils import get_config, save_json
 from pathlib import Path
 import json
@@ -23,10 +23,9 @@ class PsychologistAdvisor:
     
     def __init__(self, config):
         self.config = config or get_config()
-        genai.configure(api_key=self.config['API_KEY'])
-        model_name = "models/gemini-1.5-flash-latest"
+        self.client = genai.Client(api_key=self.config["API_KEY"])
+        self.model_name = "gemini-2.5-flash"
 
-        self.model = genai.GenerativeModel(model_name)
 
         
         self.summary_prompt = """
@@ -53,11 +52,16 @@ class PsychologistAdvisor:
         combined_text = "\n\n".join([doc.page_content for doc in documents])
         
         try:
-            response = self.model.generate_content(
-                self.summary_prompt.format(text=combined_text,
-                                           character_type="INTP",                                               # It will be user inputs.
-                                           sign="Scorpion",                                                     # It will be user inputs. 
-                                           birth_map="Sun in Scorpio, Moon in Cancer, Rising in Virgo"))        # It will be user inputs.
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=self.summary_prompt.format(
+                    text=combined_text,
+                    character_type="INTP",
+                    sign="Scorpion",
+                    birth_map="Sun in Scorpio, Moon in Cancer, Rising in Virgo"
+                )
+            )
+
                 
             
             sources = list()

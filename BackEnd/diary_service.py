@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 from typing import List, Dict, Any
 import logging
 from datetime import datetime
@@ -9,18 +9,15 @@ logger = logging.getLogger(__name__)
 class DiaryPsychologistAdvisor:
     """Psychologist class to provide advice based on user diaries"""
     
-    def __init__(self, api_key: str = None, model: str = "models/gemini-1.5-flash-latest"):
-        # Use environment variable for API key if not provided
+    def __init__(self, api_key: str = None, model: str = "gemini-2.5-flash"):
         if api_key is None:
-            api_key=os.getenv("GEMINI_API_KEY")
-        
+            api_key = os.getenv("GEMINI_API_KEY")
+
         if not api_key:
             raise ValueError("Gemini API key is required")
-        
-        genai.configure(api_key=api_key)
-        
-        # Try to initialize with the specified model, with fallbacks
-        self.model = self._initialize_model(model)
+
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = model
         
         self.advice_prompt = """
         You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
@@ -44,29 +41,8 @@ class DiaryPsychologistAdvisor:
         Structure your response with clear sections but maintain a natural, conversational flow.
         Keep your response between 300-400 words.
         """
-    def _initialize_model(self, model_name: str = None):
-        models_to_try = [
-            model_name,
-            "models/gemini-1.5-flash-latest",
-            "models/gemini-1.5-pro-latest",
-        ]
 
-    
-        # Remove None values
-        models_to_try = [m for m in models_to_try if m]
-    
-        for model in models_to_try:
-            try:
-                logger.info(f"Trying to initialize model: {model}")
-                return genai.GenerativeModel(model)
-            except Exception as e:
-                logger.warning(f"Failed to initialize model {model}: {e}")
-    
-        raise Exception("No compatible Gemini model available")
-
-
-
-    def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str) -> Dict[str, Any]:
+    def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str = None) -> Dict[str, Any]:
         """Analyze user diaries and provide psychological advice"""
         try:
             if not diaries:
@@ -81,12 +57,18 @@ class DiaryPsychologistAdvisor:
                 sign=sign
             )
             
-            response = self.model.generate_content(prompt)
+            # Generate content using the new SDK
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+
             
             return {
                 "advice": response.text,
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": len(diaries),
+                "model_used": self.model_name,
                 "status": "success"
             }
             
@@ -136,6 +118,7 @@ class DiaryPsychologistAdvisor:
                 "advice": response.text,
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
+                "model_used": self.model_name,
                 "status": "success"
             }
         except Exception as e:

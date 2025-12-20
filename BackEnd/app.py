@@ -20,8 +20,7 @@ def get_psychologist():
             raise RuntimeError("GEMINI_API_KEY not set")
 
         psychologist = DiaryPsychologistAdvisor(
-            api_key=api_key,
-            model="models/gemini-1.5-flash-latest"
+            api_key=api_key
         )
 
     return psychologist
