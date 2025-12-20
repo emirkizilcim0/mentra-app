@@ -260,12 +260,12 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             # Even if there's an error, we return the fallback advice
             logger.error(f"Analysis error: {analysis_result.get('error')}")
         
-        # FIX: Save the mood in analysis_data!
+        # Save the mood in analysis_data - use json.dumps
         analysis_data = json.dumps({
             "character_type": request.character_type,
             "sign": request.sign,
             "birth_map": request.birth_map,
-            "mood": analysis_result.get("mood", "Calm")  # ADD THIS LINE
+            "mood": analysis_result.get("mood", "Calm")
         })
         
         # Save the analysis result
@@ -279,7 +279,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         # Also return the mood in the response
         return {
             "advice": analysis_result["advice"],
-            "mood": analysis_result.get("mood", "Calm"),  # Add mood to response
+            "mood": analysis_result.get("mood", "Calm"),
             "status": "success",
             "analysis_date": analysis_result["analysis_date"],
             "diaries_analyzed": analysis_result["diaries_analyzed"]
@@ -290,12 +290,12 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         # Provide a basic fallback response
         return {
             "advice": "I'm here to help you with psychological insights! Start by writing your first diary entry to get personalized advice.",
-            "mood": "Calm",  # Add default mood
+            "mood": "Calm",
             "status": "success",
             "analysis_date": datetime.utcnow().isoformat(),
             "diaries_analyzed": 0
         }
-
+    
 @app.get("/analysis/history/{user_id}")
 async def get_analysis_history(user_id: str, limit: int = 10):
     """Get previous analysis results for a user"""
@@ -313,21 +313,30 @@ async def get_analysis_history(user_id: str, limit: int = 10):
         
         result_analyses = []
         for analysis in analyses:
-            # Parse analysis_data if it exists
-            analysis_data = analysis["analysis_data"]
+            # Parse analysis_data - it might be a string or dict
+            analysis_data_raw = analysis["analysis_data"]
+            analysis_data = {}
+            
+            if analysis_data_raw:
+                try:
+                    if isinstance(analysis_data_raw, str):
+                        # Parse JSON string
+                        analysis_data = json.loads(analysis_data_raw)
+                    elif isinstance(analysis_data_raw, dict):
+                        # Already a dict
+                        analysis_data = analysis_data_raw
+                    else:
+                        # Try to convert whatever it is
+                        analysis_data = dict(analysis_data_raw)
+                except Exception as e:
+                    logger.warning(f"Could not parse analysis_data: {e}, type: {type(analysis_data_raw)}")
+                    analysis_data = {}
             
             # Extract mood and other fields with defaults
-            mood = "Calm"
-            character_type = "Unknown"
-            sign = "Unknown"
-            birth_map = "Unknown"
-            
-            if analysis_data:
-                # asyncpg returns JSONB as dict automatically
-                mood = analysis_data.get("mood", "Calm")
-                character_type = analysis_data.get("character_type", "Unknown")
-                sign = analysis_data.get("sign", "Unknown")
-                birth_map = analysis_data.get("birth_map", "Unknown")
+            mood = analysis_data.get("mood", "Calm")
+            character_type = analysis_data.get("character_type", "Unknown")
+            sign = analysis_data.get("sign", "Unknown")
+            birth_map = analysis_data.get("birth_map", "Unknown")
             
             result_analyses.append({
                 "id": analysis["id"],
