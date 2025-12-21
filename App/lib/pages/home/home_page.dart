@@ -28,6 +28,8 @@ class _HomePageState extends State<HomePage> {
 
   String _singleQuote = "";
   bool _isLoading = true;
+  DateTime _current = DateTime.now();
+  int _slideDirection = 0;
 
   @override
   void initState() {
@@ -78,6 +80,68 @@ class _HomePageState extends State<HomePage> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  void _prevMonth() {
+    final m = _current.month;
+    final y = _current.year;
+    setState(() {
+      _current = DateTime(m == 1 ? y - 1 : y, m == 1 ? 12 : m - 1, 1);
+      _slideDirection = -1;
+    });
+  }
+
+  void _nextMonth() {
+    final m = _current.month;
+    final y = _current.year;
+    final next = DateTime(m == 12 ? y + 1 : y, m == 12 ? 1 : m + 1, 1);
+    final now = DateTime.now();
+    final isFuture =
+        next.year > now.year ||
+        (next.year == now.year && next.month > now.month);
+    if (isFuture) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Gelecek aya geçilemez.')));
+      return;
+    }
+    setState(() {
+      _current = next;
+      _slideDirection = 1;
+    });
+  }
+
+  Future<void> _openYearPicker() async {
+    final startYear = DateTime.now().year;
+    final years = List<int>.generate(12, (i) => startYear - i);
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: ListView.builder(
+            itemCount: years.length,
+            itemBuilder: (context, index) {
+              final y = years[index];
+              return ListTile(
+                title: Text(y.toString()),
+                onTap: () => Navigator.pop<int>(context, y),
+              );
+            },
+          ),
+        );
+      },
+    );
+    if (selected != null && mounted) {
+      var m = _current.month;
+      final now = DateTime.now();
+      if (selected == now.year && m > now.month) {
+        m = now.month;
+      }
+      setState(() {
+        _current = DateTime(selected, m, 1);
+        _slideDirection = 0;
+      });
     }
   }
 
@@ -359,7 +423,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
-    final dd = HomeDateData(DateTime.now(), speeches.length);
+    final dd = HomeDateData(_current, speeches.length);
 
     // Stack kullanıyoruz ki LoadingView alttaki sayfanın üzerine binebilsin
     // Böylece alttaki sayfa bulanık (blur) görünebilir.
@@ -378,6 +442,10 @@ class _HomePageState extends State<HomePage> {
             isDark: isDark,
             onDayTap: _showDetails,
           ),
+          onPrevMonth: _prevMonth,
+          onNextMonth: _nextMonth,
+          onYearTap: _openYearPicker,
+          slideDirection: _slideDirection,
         ),
 
         // 2. KATMAN: LOADING EKRANI

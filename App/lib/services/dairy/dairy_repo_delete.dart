@@ -1,5 +1,5 @@
 // lib/services/diary/diary_repo_delete.dart
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:mentra_app/services/dairy/dairy_auth.dart';
 import 'package:mentra_app/services/dairy/dairy_config.dart';
 
@@ -11,15 +11,19 @@ class DiaryRepoDelete {
         '${DiaryConfig.baseUrl}/diaries/$diaryId?user_id=$uid',
       );
 
-      final response = await http.delete(uri, headers: DiaryConfig.getHeaders);
+      final response = await DiaryConfig.client.delete(uri, headers: DiaryConfig.getHeaders);
 
       if (response.statusCode == 200) {
-        print('✅ Diary deleted: $diaryId');
+        if (kDebugMode) {
+          debugPrint('✅ Diary deleted: $diaryId');
+        }
       } else {
         throw Exception('Failed delete: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ Error deleting: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error deleting: $e');
+      }
       rethrow;
     }
   }

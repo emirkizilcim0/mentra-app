@@ -1,6 +1,6 @@
 // lib/services/diary/diary_saver.dart
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:mentra_app/services/dairy/dairy_auth.dart';
 import 'package:mentra_app/services/dairy/dairy_config.dart';
 
@@ -10,7 +10,7 @@ class DiarySaver {
       final uid = DiaryAuth.getRequiredId();
       final url = '${DiaryConfig.baseUrl}/diaries/save?user_id=$uid';
 
-      final response = await http.post(
+      final response = await DiaryConfig.client.post(
         Uri.parse(url),
         headers: DiaryConfig.jsonHeaders,
         body: json.encode({
@@ -26,7 +26,9 @@ class DiarySaver {
       }
       throw Exception('Failed: ${response.statusCode} - ${response.body}');
     } catch (e) {
-      print('Error saving diary: $e');
+      if (kDebugMode) {
+        debugPrint('Error saving diary: $e');
+      }
       rethrow;
     }
   }

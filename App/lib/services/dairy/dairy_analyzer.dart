@@ -1,6 +1,6 @@
 // lib/services/diary/diary_analyzer.dart
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:mentra_app/services/dairy/dairy_auth.dart';
 import 'package:mentra_app/services/dairy/dairy_config.dart';
 
@@ -21,7 +21,7 @@ class DiaryAnalyzer {
         'diary_count': count,
       });
 
-      final response = await http.post(
+      final response = await DiaryConfig.client.post(
         Uri.parse('${DiaryConfig.baseUrl}/analyze/diaries'),
         headers: DiaryConfig.jsonHeaders,
         body: body,
@@ -30,7 +30,9 @@ class DiaryAnalyzer {
       if (response.statusCode == 200) return json.decode(response.body);
       throw Exception('Failed: ${response.statusCode} - ${response.body}');
     } catch (e) {
-      print('❌ Error analyzing: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error analyzing: $e');
+      }
       rethrow;
     }
   }

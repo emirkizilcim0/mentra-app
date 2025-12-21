@@ -1,5 +1,6 @@
 // lib/services/diary/diary_repo_single.dart
 import 'package:mentra_app/services/dairy/dairy_repo_fetch.dart';
+import 'package:flutter/foundation.dart';
 
 class DiaryRepoSingle {
   static Future<Map<String, dynamic>> get(String diaryId) async {
@@ -12,7 +13,9 @@ class DiaryRepoSingle {
         orElse: () => throw Exception('Diary not found'),
       );
     } catch (e) {
-      print('❌ Error getting diary entry: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Error getting diary entry: $e');
+      }
       rethrow;
     }
   }

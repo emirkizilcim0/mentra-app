@@ -1,48 +1,96 @@
 // lib/services/diary/diary_repo_history.dart
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:mentra_app/services/dairy/dairy_auth.dart';
 import 'package:mentra_app/services/dairy/dairy_config.dart';
 import 'package:mentra_app/services/dairy/dairy_mapper.dart';
 
 class DiaryRepoHistory {
-  static Future<List<Map<String, dynamic>>> getHistory({int limit = 10}) async {
+  static Future<List<Map<String, dynamic>>> getHistory({int limit = 50}) async {
     try {
       final uid = DiaryAuth.getUserId();
       final uri = Uri.parse(
         '${DiaryConfig.baseUrl}/analysis/history/$uid?limit=$limit',
       );
 
-      print('🔍 Fetching history from: $uri');
+      if (kDebugMode) {
+        debugPrint('🔍 Fetching history from: $uri');
+      }
 
-      final response = await http.get(uri, headers: DiaryConfig.getHeaders);
+      final response = await DiaryConfig.client.get(uri, headers: DiaryConfig.getHeaders);
 
-      print('📡 Response status: ${response.statusCode}');
-      print('📦 Response body: ${response.body}');
+      if (kDebugMode) {
+        debugPrint('📡 Response status: ${response.statusCode}');
+      }
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('📊 Parsed data type: ${data.runtimeType}');
-
-        final List<dynamic> list = data['analyses'] ?? [];
-        print('📄 Found ${list.length} analyses');
-
-        // Debug first item
-        if (list.isNotEmpty) {
-          print('🔍 First analysis item: ${jsonEncode(list[0])}');
-          print('🔍 First analysis mood: ${list[0]['mood']}');
+        if (kDebugMode) {
+          debugPrint('📊 Parsed data type: ${data.runtimeType}');
         }
 
+        final List<dynamic> list = data['analyses'] ?? [];
+        if (kDebugMode) {
+          debugPrint('📄 Found ${list.length} analyses');
+        }
+
+        // Debug: Print raw data structure
+        if (list.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint('🔍 Raw first item keys: ${list[0].keys}');
+            debugPrint('🔍 First item: ${list[0]}');
+          }
+        }
+
+        // DIRECT MAPPING (without DiaryMapper if it's causing issues)
         return list.map((e) {
-          final mapped = DiaryMapper.mapAnalysis(e);
-          print('🗺️ Mapped analysis: ${jsonEncode(mapped)}');
+          // Create a proper structure that AdviceViewBody expects
+          final mapped = {
+            'id': e['id']?.toString() ?? '',
+            'advice': e['advice'] ?? e['advice_text'] ?? '',
+            'analysis':
+                e['advice'] ??
+                e['advice_text'] ??
+                e['analysis'] ??
+                '', // CRITICAL
+            'mood': e['mood'] ?? _extractMoodFromAdvice(e['advice'] ?? ''),
+            'character_type': e['character_type'] ?? 'Unknown',
+            'sign': e['sign'] ?? 'Unknown',
+            'birth_map': e['birth_map'] ?? 'Not specified',
+            'date':
+                e['date'] ??
+                e['created_at']?.toString() ??
+                DateTime.now().toString(),
+            'analysis_date':
+                e['analysis_date'] ??
+                e['created_at']?.toString() ??
+                DateTime.now().toString(),
+            'created_at':
+                e['created_at']?.toString() ?? DateTime.now().toString(),
+            'diaries_analyzed': e['diaries_analyzed'] ?? 1,
+            'is_new': false,
+          };
+
+          if (kDebugMode) {
+            debugPrint('🗺️ Mapped item keys: ${mapped.keys}');
+          }
           return mapped;
         }).toList();
       }
+
+      if (response.statusCode == 404) {
+        if (kDebugMode) {
+          debugPrint('⚠️ History endpoint not found or no data');
+        }
+        return [];
+      }
+
       throw Exception('Failed history: ${response.statusCode}');
     } catch (e) {
-      print('❌ Error getting history: $e');
-      rethrow;
+      if (kDebugMode) {
+        debugPrint('❌ Error getting history: $e');
+      }
+      return []; // Return empty list instead of throwing
     }
   }
 

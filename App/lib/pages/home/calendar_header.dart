@@ -5,12 +5,14 @@ class CalendarHeader extends StatelessWidget {
   final String month;
   final int year;
   final bool isDark;
+  final VoidCallback? onYearTap;
 
   const CalendarHeader({
     super.key,
     required this.month,
     required this.year,
     required this.isDark,
+    this.onYearTap,
   });
 
   @override
@@ -26,11 +28,14 @@ class CalendarHeader extends StatelessWidget {
             color: isDark ? Colors.white : Colors.black,
           ),
         ),
-        Text(
-          "$year",
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            color: isDark ? Colors.white70 : Colors.black87,
+        GestureDetector(
+          onTap: onYearTap,
+          child: Text(
+            "$year",
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
           ),
         ),
       ],

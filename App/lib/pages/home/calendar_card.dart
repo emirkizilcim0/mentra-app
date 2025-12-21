@@ -7,6 +7,9 @@ class CalendarCard extends StatelessWidget {
   final int year;
   final bool isDark;
   final List<Widget> dayWidgets;
+  final VoidCallback onPrevMonth;
+  final VoidCallback onNextMonth;
+  final VoidCallback onYearTap;
 
   const CalendarCard({
     super.key,
@@ -14,29 +17,47 @@ class CalendarCard extends StatelessWidget {
     required this.year,
     required this.isDark,
     required this.dayWidgets,
+    required this.onPrevMonth,
+    required this.onNextMonth,
+    required this.onYearTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.grey.withOpacity(0.3) : Colors.black12,
-          width: 1.5,
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v < 0) {
+          onNextMonth();
+        } else if (v > 0) {
+          onPrevMonth();
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDark ? Colors.grey.withOpacity(0.3) : Colors.black12,
+            width: 1.5,
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          CalendarHeader(month: month, year: year, isDark: isDark),
-          const SizedBox(height: 10),
-          CalendarDaysRow(isDark: isDark),
-          const SizedBox(height: 10),
-          Wrap(spacing: 10, runSpacing: 10, children: dayWidgets),
-        ],
+        child: Column(
+          children: [
+            CalendarHeader(
+              month: month,
+              year: year,
+              isDark: isDark,
+              onYearTap: onYearTap,
+            ),
+            const SizedBox(height: 10),
+            CalendarDaysRow(isDark: isDark),
+            const SizedBox(height: 10),
+            Wrap(spacing: 10, runSpacing: 10, children: dayWidgets),
+          ],
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 // lib/services/diary/diary_repo_stats.dart
 import 'package:mentra_app/services/dairy/dairy_repo_fetch.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_history.dart';
+import 'package:flutter/foundation.dart';
 
 class DiaryRepoStats {
   static Future<Map<String, dynamic>> getStats() async {
@@ -23,7 +24,9 @@ class DiaryRepoStats {
             : null,
       };
     } catch (e) {
-      print('❌ Stats error: $e');
+      if (kDebugMode) {
+        debugPrint('❌ Stats error: $e');
+      }
       rethrow;
     }
   }
