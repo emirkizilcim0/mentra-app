@@ -11,9 +11,9 @@ import 'logic_data.dart';
 import 'logic_nav.dart';
 import 'chat_view.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http; // ADD THIS
-import 'dart:convert'; // ADD THIS
-import 'package:shared_preferences/shared_preferences.dart'; // ADD THIS
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatPage extends StatefulWidget {
   final DateTime? selectedDate;
@@ -46,7 +46,6 @@ class _ChatPageState extends State<ChatPage> {
     await _loadDiaries();
   }
 
-  // --- TARİH FORMATLAYICI ---
   String _formatDate(dynamic dateStr) {
     try {
       if (dateStr == null) return "";
@@ -62,7 +61,6 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  // --- GET USER ID FOR POSTGRESQL ---
   Future<String> _getUserId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -71,15 +69,13 @@ class _ChatPageState extends State<ChatPage> {
           prefs.getString('uid') ??
           prefs.getString('userId') ??
           'unknown_user';
-      print('🔑 User ID for PostgreSQL: $userId');
       return userId;
     } catch (e) {
-      print('❌ Error getting user_id: $e');
       return 'unknown_user';
     }
   }
 
-  // --- SAVE TO POSTGRESQL ---
+  // --- CRITICAL FIX: Save to PostgreSQL PROPERLY ---
   Future<void> _saveToPostgreSQL(
     Map<String, dynamic> analysisData,
     String? diaryId,
@@ -87,77 +83,53 @@ class _ChatPageState extends State<ChatPage> {
   ) async {
     try {
       final userId = await _getUserId();
-      final baseUrl = 'https://mentra-app.onrender.com'; // Your Render URL
+      final baseUrl = 'https://mentra-app.onrender.com';
 
-      // Prepare data for PostgreSQL
-      final Map<String, dynamic> postgresData = {
-        'user_id': userId,
-        'character_type': type,
-        'sign': sign,
-        'birth_map': 'Not specified',
-        'advice': analysisData['advice'] ?? '',
-        'mood': analysisData['mood'] ?? 'Calm',
-        'analysis_date': DateTime.now().toIso8601String(),
-        'diary_id': diaryId, // Optional: link to original diary
-      };
+      print('📤 SAVING TO POSTGRESQL for user: $userId');
 
-      print('📤 Saving to PostgreSQL: $postgresData');
-
-      // Option 1: Use your existing /analyze/diaries endpoint
+      // Save via /analyses/save endpoint (your new endpoint)
       final response = await http.post(
-        Uri.parse('$baseUrl/analyze/diaries'),
+        Uri.parse('$baseUrl/analyses/save'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'user_id': userId,
           'character_type': type,
           'sign': sign,
           'birth_map': 'Not specified',
-          'diary_count': 1,
-          'specific_content': entry != null
-              ? (entry['content'] ?? entry['text'] ?? "")
-              : null,
-          'specific_ids': diaryId != null ? [diaryId] : null,
+          'advice': analysisData['advice'] ?? '',
+          'mood': analysisData['mood'] ?? 'Calm',
+          'analysis_date': DateTime.now().toIso8601String(),
+          'diary_id': diaryId,
         }),
       );
 
       if (response.statusCode == 200) {
-        print('✅✅✅ POSTGRESQL ANALYSIS SAVED VIA /analyze/diaries ✅✅✅');
-
-        // Also save via the new /analyses/save endpoint if available
-        await _saveViaAnalysesSaveEndpoint(postgresData);
+        print('✅✅✅ POSTGRESQL SAVE SUCCESSFUL ✅✅✅');
+        print('📊 Response: ${response.body}');
       } else {
-        print('⚠️ /analyze/diaries save failed: ${response.statusCode}');
-        // Try direct save
-        await _saveViaAnalysesSaveEndpoint(postgresData);
+        print(
+          '⚠️ PostgreSQL save failed: ${response.statusCode} - ${response.body}',
+        );
+
+        // Fallback: Try the old /analyze/diaries endpoint
+        await http.post(
+          Uri.parse('$baseUrl/analyze/diaries'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'user_id': userId,
+            'character_type': type,
+            'sign': sign,
+            'birth_map': 'Not specified',
+            'diary_count': 1,
+            'specific_content': entry != null
+                ? (entry['content'] ?? entry['text'] ?? "")
+                : null,
+          }),
+        );
+        print('🔄 Used fallback /analyze/diaries endpoint');
       }
     } catch (e) {
       print('❌ PostgreSQL save error: $e');
-    }
-  }
-
-  // --- SAVE VIA /analyses/save ENDPOINT ---
-  Future<void> _saveViaAnalysesSaveEndpoint(Map<String, dynamic> data) async {
-    try {
-      final baseUrl = 'https://mentra-app.onrender.com';
-      final response = await http.post(
-        Uri.parse('$baseUrl/analyses/save'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(data),
-      );
-
-      if (response.statusCode == 200) {
-        print('✅✅✅ DIRECT POSTGRESQL SAVE SUCCESS ✅✅✅');
-        final result = json.decode(response.body);
-        print('📊 Save result: $result');
-      } else if (response.statusCode == 404) {
-        print('⚠️ /analyses/save endpoint not found (add it to your backend)');
-      } else {
-        print(
-          '⚠️ /analyses/save failed: ${response.statusCode} - ${response.body}',
-        );
-      }
-    } catch (e) {
-      print('❌ /analyses/save error: $e');
     }
   }
 
@@ -166,58 +138,128 @@ class _ChatPageState extends State<ChatPage> {
       loading = true;
       error = null;
     });
+
     try {
-      // 1. Telefondaki Günlükleri Çek
-      final items = await LogicData.loadDiaries();
+      print('🔄 Loading diaries from PostgreSQL...');
 
-      // 2. Firebase'den Analizleri Çek
-      final QuerySnapshot analysisSnapshot = await FirebaseFirestore.instance
-          .collection('analyses')
-          .get();
+      // Get user ID
+      final userId = await _getUserId();
+      final baseUrl = 'https://mentra-app.onrender.com';
 
-      final List<Map<String, dynamic>> analysesList = analysisSnapshot.docs
-          .map((doc) => doc.data() as Map<String, dynamic>)
-          .toList();
+      // Try to load diaries from LogicData first (or directly from PostgreSQL)
+      List<Map<String, dynamic>> items = [];
 
-      // 3. Eşleştirme Yap (Günlük ID == Analiz Diary ID)
+      try {
+        // Option 1: Use your existing LogicData.loadDiaries()
+        items = await LogicData.loadDiaries();
+        print('📝 Loaded ${items.length} diaries from LogicData');
+
+        // If LogicData returns empty, try direct PostgreSQL API
+        if (items.isEmpty) {
+          print('⚠️ LogicData returned empty, trying direct API...');
+          final response = await http.get(
+            Uri.parse('$baseUrl/diaries/$userId'),
+          );
+
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            if (data['diaries'] is List) {
+              items = (data['diaries'] as List).cast<Map<String, dynamic>>();
+              print('📝 Direct API loaded ${items.length} diaries');
+            }
+          }
+        }
+      } catch (e) {
+        print('⚠️ Diary loading error: $e');
+        // Continue with empty items
+      }
+
+      // Load analyses from PostgreSQL
+      print('🔍 Loading analyses from PostgreSQL...');
+      final analysisResponse = await http.get(
+        Uri.parse('$baseUrl/analysis/history/$userId?limit=100'),
+      );
+
+      Map<String, Map<String, dynamic>> analysisMap = {};
+
+      if (analysisResponse.statusCode == 200) {
+        final analysisData = json.decode(analysisResponse.body);
+        print('📊 Analysis response keys: ${analysisData.keys}');
+
+        if (analysisData['analyses'] is List) {
+          final analyses = (analysisData['analyses'] as List)
+              .cast<Map<String, dynamic>>();
+          print('✅ Found ${analyses.length} analyses');
+
+          // Create map: diary_id -> analysis
+          for (var analysis in analyses) {
+            final diaryId = analysis['diary_id']?.toString();
+            if (diaryId != null && diaryId.isNotEmpty) {
+              analysisMap[diaryId] = analysis;
+              print('📌 Mapped analysis to diary_id: $diaryId');
+            }
+          }
+        }
+      } else {
+        print('⚠️ Failed to load analyses: ${analysisResponse.statusCode}');
+      }
+
+      // Process each diary
       for (var item in items) {
+        // Format date
         if (item['date'] != null) {
           item['formattedDate'] = _formatDate(item['date']);
         }
 
-        String localId =
-            item['id']?.toString() ?? item['_id']?.toString() ?? "";
+        // Get diary ID (try multiple possible field names)
+        final diaryId =
+            item['id']?.toString() ??
+            item['_id']?.toString() ??
+            item['diary_id']?.toString() ??
+            '';
 
-        final matchingAnalysis = analysesList.firstWhere(
-          (analysis) => analysis['diary_id'].toString() == localId,
-          orElse: () => {},
-        );
+        print('🔍 Processing diary ID: $diaryId');
 
-        if (matchingAnalysis.isNotEmpty) {
-          item['advice'] = matchingAnalysis['advice'];
-          item['analysis'] = matchingAnalysis['analysis'];
-          item['mood'] = matchingAnalysis['mood'];
+        // Attach analysis if exists
+        if (analysisMap.containsKey(diaryId)) {
+          final analysis = analysisMap[diaryId]!;
+          item['advice'] = analysis['advice'] ?? analysis['analysis'] ?? '';
+          item['analysis'] = analysis['analysis'] ?? analysis['advice'] ?? '';
+          item['mood'] = analysis['mood'] ?? 'Calm';
+          print('✅ Attached advice to diary $diaryId');
+        } else {
+          // Clear any old advice
+          item['advice'] = null;
+          item['analysis'] = null;
+          item['mood'] = null;
         }
       }
 
       setState(() {
         diaries = items;
         loading = false;
+        print(
+          '🎉 Loaded ${items.length} diaries with ${analysisMap.length} analyses attached',
+        );
       });
 
+      // Handle auto-open logic
       if (mounted && widget.selectedDate != null && widget.showAdvice) {
         String y = widget.selectedDate!.year.toString();
         String m = widget.selectedDate!.month.toString().padLeft(2, '0');
         String d = widget.selectedDate!.day.toString().padLeft(2, '0');
         String targetKey = "$y-$m-$d";
-        final foundEntry = items.firstWhere(
-          (e) => e['date'].toString().contains(targetKey),
-          orElse: () => {},
-        );
-        if (foundEntry.isNotEmpty)
+
+        final foundEntry = items.firstWhere((e) {
+          final dateStr = e['date']?.toString() ?? '';
+          return dateStr.contains(targetKey);
+        }, orElse: () => {});
+
+        if (foundEntry.isNotEmpty) {
           _getAdvice(foundEntry);
-        else
+        } else {
           _getAdvice(null);
+        }
       } else if (mounted) {
         LogicNav.checkForAutoOpen(
           context,
@@ -227,28 +269,28 @@ class _ChatPageState extends State<ChatPage> {
         );
       }
     } catch (e) {
-      print("Yükleme Hatası: $e");
+      print("❌ Load Error: $e");
       setState(() {
         loading = false;
-        error = 'Failed to load.';
+        error = 'Failed to load diaries. Please try again.';
       });
     }
   }
 
-  // --- KRİTİK ADVICE FONKSİYONU ---
+  // --- COMPLETELY FIXED _getAdvice FUNCTION ---
   Future<void> _getAdvice(Map<String, dynamic>? entry) async {
     setState(() {
       _isAnalyzing = true;
     });
 
-    print("📢 1. BAŞLANGIÇ: _getAdvice çalıştı.");
+    print("📢 1. START: _getAdvice called.");
 
     try {
-      // Zaten varsa aç
+      // If advice already exists, open it directly
       if (entry != null &&
           entry['advice'] != null &&
           entry['advice'].toString().isNotEmpty) {
-        print("📢 2. DURUM: Zaten advice var, direkt açılıyor.");
+        print("📢 2. STATUS: Advice already exists, opening directly.");
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -265,100 +307,151 @@ class _ChatPageState extends State<ChatPage> {
         return;
       }
 
-      Map<String, dynamic>? finalData;
+      String? currentId;
+      String? diaryContent;
 
-      if (finalData == null) {
-        String? currentId;
-        if (entry != null) {
-          currentId = entry['id']?.toString() ?? entry['_id']?.toString();
-        }
-        print("📢 3. ID TESPİTİ: İşlem yapılacak ID: $currentId");
-
-        // AI Analizi
-        print("📢 4. DURUM: AI servisine gidiliyor...");
-        final Map<String, dynamic> response = await DiaryService.analyzeDiaries(
-          characterType: type,
-          sign: sign,
-          birthMap: 'Not specified',
-          diaryCount: 1,
-          specificContent: entry != null
-              ? (entry['content'] ?? entry['text'] ?? "")
-              : null,
-          specificIds: currentId != null ? [currentId] : null,
-          userDiaries: entry != null ? [entry] : null,
-        );
-        print("📢 5. DURUM: AI cevabı geldi.");
-
-        finalData = Map.of(response);
-
-        // --- KAYIT KISMI (HATAYI BURADA ARIYORUZ) ---
-        if (entry != null && currentId != null) {
-          print("📢 6. DURUM: Firebase'e yazma işlemi başlıyor...");
-
-          try {
-            // 1. Save to Firebase
-            await FirebaseFirestore.instance.collection('analyses').add({
-              'diary_id': currentId,
-              'advice': finalData['advice'],
-              'analysis': finalData['analysis'],
-              'mood': finalData['mood'],
-              'created_at': FieldValue.serverTimestamp(),
-            });
-            print("✅✅✅ 7. BAŞARI: FIREBASE'E KAYDEDİLDİ! ✅✅✅");
-
-            // 2. ALSO SAVE TO POSTGRESQL (CRITICAL FOR AdvicePage!)
-            await _saveToPostgreSQL(finalData, currentId, entry);
-          } catch (firebaseError) {
-            print("❌❌❌ FIREBASE HATASI: $firebaseError ❌❌❌");
-          }
-        } else {
-          print("⚠️ UYARI: ID veya Entry null olduğu için kayıt atlandı.");
-        }
-        // ---------------------------------------------
-
-        _loadDiaries();
+      if (entry != null) {
+        currentId = entry['id']?.toString() ?? entry['_id']?.toString();
+        diaryContent = entry['content'] ?? entry['text'] ?? "";
       }
 
-      // Sayfayı Aç
-      if (finalData != null) {
-        if (entry != null) {
-          finalData['date'] = entry['date'];
-          finalData['formattedDate'] = _formatDate(entry['date']);
-        }
-        finalData['character_type'] = type;
-        finalData['sign'] = sign;
-        if (finalData['mood'] == null) finalData['mood'] = 'Calm';
+      print("📢 3. ID DETECTION: Processing ID: $currentId");
 
-        if (mounted) {
-          setState(() {
-            _isAnalyzing = false;
-          });
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AdviceDetailPage(
-                analysisItem: finalData!,
-                title: "Analysis Result",
-                shouldSaveToHistory: true,
-              ),
-            ),
+      // AI Analysis
+      print("📢 4. STATUS: Calling AI service...");
+      final Map<String, dynamic> response = await DiaryService.analyzeDiaries(
+        characterType: type,
+        sign: sign,
+        birthMap: 'Not specified',
+        diaryCount: 1,
+        specificContent: diaryContent,
+        specificIds: currentId != null ? [currentId] : null,
+        userDiaries: entry != null ? [entry] : null,
+      );
+      print("📢 5. STATUS: AI response received.");
+
+      final Map<String, dynamic> finalData = Map.of(response);
+
+      // --- POSTGRESQL SAVE ONLY ---
+      if (entry != null && currentId != null) {
+        print("📢 6. STATUS: Saving to PostgreSQL...");
+
+        try {
+          final userId = await _getUserId();
+          final baseUrl = 'https://mentra-app.onrender.com';
+
+          // Save analysis to PostgreSQL
+          final saveResponse = await http.post(
+            Uri.parse('$baseUrl/analyses/save'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'user_id': userId,
+              'character_type': type,
+              'sign': sign,
+              'birth_map': 'Not specified',
+              'advice': finalData['advice'] ?? '',
+              'analysis': finalData['analysis'] ?? finalData['advice'] ?? '',
+              'mood': finalData['mood'] ?? 'Calm',
+              'analysis_date': DateTime.now().toIso8601String(),
+              'diary_id': currentId,
+              'diaries_analyzed': 1,
+            }),
           );
+
+          if (saveResponse.statusCode == 200) {
+            print("✅✅✅ SAVED TO POSTGRESQL SUCCESSFULLY! ✅✅✅");
+
+            // Store the saved analysis ID if returned
+            try {
+              final responseData = json.decode(saveResponse.body);
+              if (responseData['id'] != null) {
+                finalData['id'] = responseData['id'].toString();
+              }
+            } catch (e) {
+              print("Note: Could not parse save response: $e");
+            }
+          } else {
+            print(
+              "⚠️ PostgreSQL save failed: ${saveResponse.statusCode} - ${saveResponse.body}",
+            );
+
+            // Alternative save method if primary endpoint fails
+            try {
+              await http.post(
+                Uri.parse('$baseUrl/analyze/diaries'),
+                headers: {'Content-Type': 'application/json'},
+                body: json.encode({
+                  'user_id': userId,
+                  'character_type': type,
+                  'sign': sign,
+                  'birth_map': 'Not specified',
+                  'diary_count': 1,
+                  'specific_content': diaryContent,
+                  'specific_ids': [currentId],
+                }),
+              );
+              print("🔄 Used alternative /analyze/diaries endpoint");
+            } catch (fallbackError) {
+              print("❌ Fallback save also failed: $fallbackError");
+            }
+          }
+        } catch (postgresError) {
+          print("❌❌❌ POSTGRESQL ERROR: $postgresError ❌❌❌");
         }
+      }
+
+      // Prepare data for display
+      if (entry != null) {
+        finalData['date'] = entry['date'];
+        finalData['formattedDate'] = _formatDate(entry['date']);
+        if (currentId != null) {
+          finalData['diary_id'] = currentId;
+        }
+      }
+
+      finalData['character_type'] = type;
+      finalData['sign'] = sign;
+      finalData['mood'] = finalData['mood'] ?? 'Calm';
+      finalData['diaries_analyzed'] = 1;
+      finalData['analysis_date'] = DateTime.now().toIso8601String();
+
+      // If we have a saved ID from PostgreSQL, use it
+      if (finalData['id'] == null && entry != null) {
+        finalData['id'] = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+      }
+
+      // Refresh diaries to show the new advice button
+      await _loadDiaries();
+
+      // Open AdviceDetailPage
+      if (mounted) {
+        setState(() {
+          _isAnalyzing = false;
+        });
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AdviceDetailPage(
+              analysisItem: finalData,
+              title: entry != null ? "Daily Advice" : "Analysis Result",
+              shouldSaveToHistory: true,
+            ),
+          ),
+        );
       }
     } catch (e) {
-      print("❌❌❌ GENEL HATA: $e ❌❌❌");
+      print("❌❌❌ GENERAL ERROR: $e ❌❌❌");
       if (mounted) {
         setState(() {
           _isAnalyzing = false;
         });
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
       }
     }
   }
 
-  // ChatPage.dart içindeki _write fonksiyonu
   Future<void> _write() async {
     final res = await Navigator.push(
       context,
@@ -366,7 +459,28 @@ class _ChatPageState extends State<ChatPage> {
     );
 
     if (res != null) {
+      // Save to PostgreSQL via your backend
+      final userId = await _getUserId();
+      try {
+        await http.post(
+          Uri.parse(
+            'https://mentra-app.onrender.com/diaries/save?user_id=$userId',
+          ),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'content': res['content'] ?? res['text'] ?? '',
+            'mood': res['mood'],
+            'tags': res['tags'],
+          }),
+        );
+        print('✅ Diary saved to PostgreSQL');
+      } catch (e) {
+        print('❌ PostgreSQL diary save error: $e');
+      }
+
+      // Also save to Firebase for compatibility
       await DiaryService.saveDiaryEntry(res);
+
       await _loadDiaries();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

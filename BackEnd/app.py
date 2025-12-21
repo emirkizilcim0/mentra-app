@@ -417,7 +417,8 @@ async def save_analysis(request: SaveAnalysisRequest):
             "birth_map": request.birth_map,
             "mood": request.mood,
             "analysis_date": analysis_date,
-            "diary_id": request.diary_id
+            "diary_id": request.diary_id,
+            "advice": request.advice  # ADD THIS - store full advice text
         }
         
         analysis_id = await connection_pool.fetchval('''
@@ -429,15 +430,16 @@ async def save_analysis(request: SaveAnalysisRequest):
         ''', 
             request.user_id,
             "diary_analysis",
-            request.advice,
-            1,  # Single diary analyzed
-            json.dumps(analysis_data)
+            request.advice,  # This goes in advice_text column
+            request.diaries_analyzed or 1,  # Use from request
+            json.dumps(analysis_data)  # Store everything else in analysis_data
         )
         
         logger.info(f"✅ Analysis saved to PostgreSQL, ID: {analysis_id}")
         
         return {
             "message": "Analysis saved successfully",
+            "id": analysis_id,  # RETURN THE ID HERE!
             "analysis_id": analysis_id,
             "status": "success"
         }
