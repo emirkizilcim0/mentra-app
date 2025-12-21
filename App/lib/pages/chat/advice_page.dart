@@ -6,7 +6,12 @@ import 'package:provider/provider.dart';
 import 'advice_view_body.dart';
 
 class AdvicePage extends StatefulWidget {
-  const AdvicePage({super.key});
+  // 1. BU İKİ DEĞİŞKENİ EKLE: Dışarıdan veri alabilmesi için
+  final String? generatedAdvice;
+  final String? date;
+
+  const AdvicePage({super.key, this.generatedAdvice, this.date});
+
   @override
   State<AdvicePage> createState() => _AdvicePageState();
 }
@@ -19,7 +24,23 @@ class _AdvicePageState extends State<AdvicePage> {
   @override
   void initState() {
     super.initState();
-    _loadAnalyses();
+    // 2. KONTROL MANTIĞI: Veri geldi mi yoksa geçmişi mi çekelim?
+    if (widget.generatedAdvice != null) {
+      // Eğer ChatPage'den veri geldiyse, direkt onu ekrana bas
+      setState(() {
+        analyses = [
+          {
+            'analysis': widget
+                .generatedAdvice, // AdviceViewBody'nin beklediği key (muhtemelen 'analysis' veya 'content')
+            'created_at': widget.date ?? DateTime.now().toString(),
+          },
+        ];
+        isLoading = false;
+      });
+    } else {
+      // Veri gelmediyse (Menüden açıldıysa) geçmişi yükle
+      _loadAnalyses();
+    }
   }
 
   Future<void> _loadAnalyses() async {
@@ -51,6 +72,7 @@ class _AdvicePageState extends State<AdvicePage> {
       appBar: AppBar(
         title: const Text('Advice'),
         actions: [
+          // Eğer tek bir advice gösteriyorsak refresh butonu geçmişe dönmeyi sağlayabilir
           IconButton(onPressed: _loadAnalyses, icon: const Icon(Icons.refresh)),
         ],
       ),

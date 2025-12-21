@@ -27,6 +27,9 @@ class MoodLineChart extends StatelessWidget {
     final gridColor = MoodGraphStyles.getGridColor(isDark);
     final textColor = MoodGraphStyles.getTextColor(isDark);
 
+    // DÜZELTME 1: Dinamik aralık hesaplama
+    final double interval = _getXAxisInterval(range, data.length);
+
     // Convert mood data to chart spots
     final spots = List.generate(
       data.length,
@@ -65,6 +68,7 @@ class MoodLineChart extends StatelessWidget {
             child: LineChart(
               LineChartData(
                 minY: 0,
+                maxX: (data.length - 1).toDouble(), // X ekseni sınırını belirle
                 maxY: 5, // 0-5 scale for moods
                 gridData: FlGridData(
                   show: true,
@@ -160,14 +164,26 @@ class MoodLineChart extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 24,
-                      interval: _getXAxisInterval(range, data.length),
+                      interval:
+                          interval, // DÜZELTME 2: Aralığı buraya veriyoruz
                       getTitlesWidget: (value, meta) {
                         final index = value.toInt();
+
+                        // DÜZELTME 3: Modulo kontrolü (Üst üste binmeyi engeller)
+                        if (index % interval.toInt() != 0) {
+                          return const SizedBox.shrink();
+                        }
+
                         if (index >= 0 && index < data.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              _formatLabel(data[index], range),
+                              _formatLabel(
+                                data[index],
+                                range,
+                                index,
+                                data.length,
+                              ),
                               style: TextStyle(fontSize: 9, color: textColor),
                             ),
                           );
@@ -191,7 +207,8 @@ class MoodLineChart extends StatelessWidget {
                         final index = spot.spotIndex;
                         final mood = data[index];
                         return LineTooltipItem(
-                          '${_formatLabel(mood, range)}\n${mood.moodLabel}',
+                          // DÜZELTME BURADA: 4. parametre olarak 'data.length' eklendi
+                          '${_formatLabel(mood, range, index, data.length)}\n${mood.moodLabel}',
                           TextStyle(
                             color: isDark ? Colors.white : Colors.black,
                             fontWeight: FontWeight.w600,
@@ -232,23 +249,50 @@ class MoodLineChart extends StatelessWidget {
     }
   }
 
+  // DÜZELTME 4: Aralık hesaplama mantığı (6 etiketten fazlasını gizle)
+  // DÜZELTİLMİŞ ARALIK HESAPLAMA
   double _getXAxisInterval(MoodRange range, int dataLength) {
     switch (range) {
       case MoodRange.day:
-        return 1;
+        // Sadece 'Today' modunda veriler çoksa sıkıştırma yap
+        if (dataLength <= 6) return 1;
+        return (dataLength / 6).ceilToDouble();
+
       case MoodRange.week:
-        return 1; // Show every day
+        // Haftalık görünümde ASLA atlama yapma, her günü göster (Interval = 1)
+        return 1;
+
       case MoodRange.month:
-        return 1; // Show every week
+        // Aylık görünümde her haftayı göster (Interval = 1)
+        return 1;
     }
   }
 
-  String _formatLabel(MoodData mood, MoodRange range) {
+  // index ve dataLength parametrelerini ekledik
+  String _formatLabel(
+    MoodData mood,
+    MoodRange range,
+    int index,
+    int dataLength,
+  ) {
     switch (range) {
       case MoodRange.day:
-        return 'Now';
+        // Saat ve dakika (Örn: 14:30)
+        return '${mood.date.hour.toString().padLeft(2, '0')}:${mood.date.minute.toString().padLeft(2, '0')}';
+
       case MoodRange.week:
-        return mood.dayName; // Mon, Tue, etc.
+        // HİLE BURADA: Verinin tarihi ne olursa olsun, grafikteki sırasına göre gün atıyoruz.
+        // Son veri (en sağdaki) = Bugün
+        // Bir önceki = Dün
+        final now = DateTime.now();
+        // Geriye doğru hesaplama: (Toplam veri - 1 - index) gün kadar geriye git
+        final calculatedDate = now.subtract(
+          Duration(days: dataLength - 1 - index),
+        );
+
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return days[calculatedDate.weekday - 1];
+
       case MoodRange.month:
         return 'W${_getWeekNumber(mood.date)}';
     }

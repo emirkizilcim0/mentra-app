@@ -8,11 +8,13 @@ import 'package:mentra_app/pages/chat/chat_page.dart';
 class DayDetailsDialog extends StatelessWidget {
   final DateTime date;
   final bool hasEntry;
+  final VoidCallback? onAdviceTap;
 
   const DayDetailsDialog({
     super.key,
     required this.date,
     required this.hasEntry,
+    this.onAdviceTap, // Constructor'a ekledik
   });
 
   @override
@@ -48,6 +50,8 @@ class DayDetailsDialog extends StatelessWidget {
                   : null,
             ),
             const Divider(),
+
+            // ... DayDetailsDialog içindeki Advice ListTile kısmı ...
             ListTile(
               leading: const Icon(
                 Icons.lightbulb_outline,
@@ -58,13 +62,16 @@ class DayDetailsDialog extends StatelessWidget {
                 style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
               ),
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AdvicePage()),
-                );
-              },
+
+              // --- DEĞİŞİKLİK BURADA ---
+              // hasEntry true ise (yani günlük varsa) butonu aktif ediyoruz.
+              onTap: hasEntry
+                  ? () {
+                      Navigator.pop(context); // Diyaloğu kapat
+                      if (onAdviceTap != null)
+                        onAdviceTap!(); // Fonksiyonu çalıştır
+                    }
+                  : null,
             ),
           ],
         ),

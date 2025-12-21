@@ -1,12 +1,12 @@
 // It consists of routes of the application.
 
 import 'package:flutter/material.dart';
+import 'package:mentra_app/pages/chat/advice_page.dart';
 
 import 'package:mentra_app/pages/chat/chat_page.dart';
 import 'package:mentra_app/pages/dairy/detail/dairy_detail_page.dart';
 import 'package:mentra_app/pages/dairy/write/dairy_write_page.dart';
 import 'package:mentra_app/pages/home/home_page.dart';
-import 'package:mentra_app/pages/info/info_page.dart';
 import 'package:mentra_app/pages/login/login_page.dart';
 import 'package:mentra_app/pages/mood/mood_graph_page.dart';
 import 'package:mentra_app/pages/profile/profile_page.dart';
@@ -27,13 +27,13 @@ class AppRoutes {
     '/testPage': (context) => const MbtiTestPage(),
     '/chatPage': (context) => const ChatPage(),
     '/diaryWrite': (context) => const DiaryWritePage(),
+    '/advice': (context) => const AdvicePage(),
 
     '/diaryDetail': (context) {
       final args =
           ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
       return DiaryDetailPage(diaryEntry: args);
     },
-    '/infoPage': (context) => const InfoPage(),
     '/resultPage': (context) => ResultScreen(mbtiResult: ''),
     '/moodGraph': (context) => const MoodGraphPage(),
   };

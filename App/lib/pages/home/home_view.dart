@@ -1,6 +1,6 @@
 // lib/pages/home/home_view.dart
 import 'package:flutter/material.dart';
-import 'package:mentra_app/motivational_speeches.dart';
+// motivational_speeches importuna artık burada ihtiyacın kalmadı ama durabilir
 import 'top_bar.dart';
 import 'calendar_card.dart';
 import 'speech_card.dart';
@@ -11,12 +11,14 @@ class HomeView extends StatelessWidget {
   final bool isDark;
   final HomeDateData dd;
   final List<Widget> dayWidgets;
+  final String randomSpeech; // <--- 1. BU DEĞİŞKENİ EKLE
 
   const HomeView({
     super.key,
     required this.isDark,
     required this.dd,
     required this.dayWidgets,
+    required this.randomSpeech, // <--- 2. CONSTRUCTOR'A EKLE
   });
 
   @override
@@ -41,8 +43,10 @@ class HomeView extends StatelessWidget {
                         isDark: isDark,
                         dayWidgets: dayWidgets,
                       ),
+                      // 3. BURADAKİ DEĞİŞİKLİĞE DİKKAT
                       SpeechCard(
-                        speech: speeches[dd.speechIndex],
+                        speech:
+                            randomSpeech, // Artık listeden değil, gelen tek sözü kullanıyoruz
                         isDark: isDark,
                         dateStr: "${dd.month} ${dd.now.day}, ${dd.year}",
                       ),

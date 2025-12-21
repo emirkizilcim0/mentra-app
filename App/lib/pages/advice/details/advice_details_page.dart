@@ -1,5 +1,6 @@
 // lib/advice_detail_page.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // <--- EKLENDİ: Format için gerekli
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'advice_colors.dart';
@@ -19,12 +20,39 @@ class AdviceDetailPage extends StatelessWidget {
     required this.title,
   });
 
+  // --- EKLENEN FONKSİYON: US TARİH FORMATI ---
+  String _formatDateUS(Map<String, dynamic> item) {
+    // Veriyi güvenli şekilde çekiyoruz
+    final rawDate = item['formattedDate'] ?? item['created_at'] ?? item['date'];
+
+    if (rawDate == null) return '';
+
+    try {
+      DateTime date;
+      if (rawDate is DateTime) {
+        date = rawDate;
+      } else {
+        date = DateTime.parse(rawDate.toString());
+      }
+
+      // US Formatı: "December 20, 2025"
+      // toLocal() ekledim ki saat farkından gün kaymasın
+      return DateFormat('d MMMM, yyyy', 'en_US').format(date.toLocal());
+    } catch (_) {
+      return rawDate.toString();
+    }
+  }
+  // ---------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
     final mood = analysisItem['mood'] ?? 'Calm';
     final emoji = _getEmojiForMood(mood);
     final moodColor = _getMoodColor(mood);
+
+    // Tarihi formatlayıp değişkene atayalım
+    final formattedDate = _formatDateUS(analysisItem);
 
     return Scaffold(
       backgroundColor: AdviceColors.bg(isDark),
@@ -69,7 +97,7 @@ class AdviceDetailPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          AdviceUtils.getDate(analysisItem),
+                          formattedDate, // <--- GÜNCELLENDİ
                           style: TextStyle(
                             fontSize: 14,
                             color: isDark ? Colors.white70 : Colors.grey[600],
@@ -96,7 +124,7 @@ class AdviceDetailPage extends StatelessWidget {
               isDark: isDark,
               children: [
                 CompDate(
-                  date: AdviceUtils.getDate(analysisItem),
+                  date: formattedDate, // <--- GÜNCELLENDİ
                   isDark: isDark,
                 ),
                 const SizedBox(height: 10),
@@ -143,12 +171,6 @@ class AdviceDetailPage extends StatelessWidget {
                     analysisItem['sign'] ?? 'Not specified',
                     isDark,
                   ),
-                  if (analysisItem['birth_map'] != null)
-                    _buildDetailRow(
-                      'Birth Map',
-                      analysisItem['birth_map'],
-                      isDark,
-                    ),
                 ],
               ),
             ),

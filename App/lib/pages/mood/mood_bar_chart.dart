@@ -1,9 +1,9 @@
-// pages/mood/mood_bar_chart.dart
+// lib/pages/mood/mood_bar_chart.dart
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:mentra_app/models/mood_data.dart';
-import 'mood_graph_styles.dart';
 import 'package:mentra_app/services/mood_repository.dart';
+import 'mood_graph_styles.dart';
 
 class MoodBarChart extends StatelessWidget {
   final List<MoodData> data;
@@ -19,13 +19,14 @@ class MoodBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (data.isEmpty) {
-      return Container(); // Return empty container if no data
-    }
+    if (data.isEmpty) return Container();
 
     final textColor = MoodGraphStyles.getTextColor(isDark);
     final gridColor = MoodGraphStyles.getGridColor(isDark);
 
+    // Aralığı burada hesaplıyoruz
+    // Range parametresini de ekliyoruz
+    final double interval = _getXAxisInterval(range, data.length);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: MoodGraphStyles.getChartContainerDecoration(isDark),
@@ -57,14 +58,13 @@ class MoodBarChart extends StatelessWidget {
             height: 180,
             child: BarChart(
               BarChartData(
-                maxY: 5, // 0-5 scale
+                maxY: 5,
                 minY: 0,
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(color: gridColor, strokeWidth: 1);
-                  },
+                  getDrawingHorizontalLine: (value) =>
+                      FlLine(color: gridColor, strokeWidth: 1),
                 ),
                 borderData: FlBorderData(
                   show: true,
@@ -82,7 +82,7 @@ class MoodBarChart extends StatelessWidget {
                         width: _getBarWidth(range, data.length),
                       ),
                     ],
-                    showingTooltipIndicators: [0],
+                    showingTooltipIndicators: [],
                   ),
                 ),
                 titlesData: FlTitlesData(
@@ -92,36 +92,21 @@ class MoodBarChart extends StatelessWidget {
                       reservedSize: 40,
                       interval: 1,
                       getTitlesWidget: (value, meta) {
-                        if (value == 0)
+                        const moods = [
+                          'Angry',
+                          'Sad',
+                          'Anxious',
+                          'Confused',
+                          'Calm',
+                          'Happy',
+                        ];
+                        int index = value.toInt();
+                        if (index >= 0 && index < moods.length) {
                           return Text(
-                            'Angry',
+                            moods[index],
                             style: TextStyle(color: textColor, fontSize: 10),
                           );
-                        if (value == 1)
-                          return Text(
-                            'Sad',
-                            style: TextStyle(color: textColor, fontSize: 10),
-                          );
-                        if (value == 2)
-                          return Text(
-                            'Anxious',
-                            style: TextStyle(color: textColor, fontSize: 10),
-                          );
-                        if (value == 3)
-                          return Text(
-                            'Confused',
-                            style: TextStyle(color: textColor, fontSize: 10),
-                          );
-                        if (value == 4)
-                          return Text(
-                            'Calm',
-                            style: TextStyle(color: textColor, fontSize: 10),
-                          );
-                        if (value == 5)
-                          return Text(
-                            'Happy',
-                            style: TextStyle(color: textColor, fontSize: 10),
-                          );
+                        }
                         return const Text('');
                       },
                     ),
@@ -130,14 +115,26 @@ class MoodBarChart extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 24,
-                      interval: _getXAxisInterval(range, data.length),
+                      interval: interval, // Aralığı buraya veriyoruz
                       getTitlesWidget: (value, meta) {
                         final index = value.toInt();
+
+                        // KİLİT NOKTA: Eğer index aralığa tam bölünmüyorsa hiç çizme!
+                        // Bu, üst üste binmeyi %100 engeller.
+                        if (index % interval.toInt() != 0) {
+                          return const SizedBox.shrink();
+                        }
+
                         if (index >= 0 && index < data.length) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              _formatLabel(data[index], range),
+                              _formatLabel(
+                                data[index],
+                                range,
+                                index,
+                                data.length,
+                              ),
                               style: TextStyle(fontSize: 9, color: textColor),
                             ),
                           );
@@ -153,39 +150,36 @@ class MoodBarChart extends StatelessWidget {
                     sideTitles: SideTitles(showTitles: false),
                   ),
                 ),
-                barTouchData: BarTouchData(
-                  enabled: true,
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final mood = data[groupIndex];
-                      return BarTooltipItem(
-                        '${_formatLabel(mood, range)}\n${mood.moodLabel}',
-                        TextStyle(
-                          color: isDark ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: '\n${_formatDate(mood.date)}',
-                            style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.grey,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
+                barTouchData: BarTouchData(enabled: false),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          // Mood statistics
           _buildMoodStats(data, textColor),
         ],
       ),
     );
+  }
+
+  // --- HELPER METHODS ---
+
+  // Dinamik aralık hesaplama: Ekrana en fazla 6-7 etiket sığsın
+  // DÜZELTİLMİŞ ARALIK HESAPLAMA
+  double _getXAxisInterval(MoodRange range, int dataLength) {
+    switch (range) {
+      case MoodRange.day:
+        // Sadece 'Today' modunda veriler çoksa sıkıştırma yap
+        if (dataLength <= 6) return 1;
+        return (dataLength / 6).ceilToDouble();
+
+      case MoodRange.week:
+        // Haftalık görünümde ASLA atlama yapma, her günü göster (Interval = 1)
+        return 1;
+
+      case MoodRange.month:
+        // Aylık görünümde her haftayı göster (Interval = 1)
+        return 1;
+    }
   }
 
   String _getRangeLabel(MoodRange range) {
@@ -202,31 +196,41 @@ class MoodBarChart extends StatelessWidget {
   double _getBarWidth(MoodRange range, int dataLength) {
     switch (range) {
       case MoodRange.day:
-        return 30;
+        if (dataLength > 20) return 6;
+        if (dataLength > 10) return 10;
+        return 16;
       case MoodRange.week:
-        return 18;
+        return 14;
       case MoodRange.month:
-        return 22;
+        return 12;
     }
   }
 
-  double _getXAxisInterval(MoodRange range, int dataLength) {
+  // index ve dataLength parametrelerini ekledik
+  String _formatLabel(
+    MoodData mood,
+    MoodRange range,
+    int index,
+    int dataLength,
+  ) {
     switch (range) {
       case MoodRange.day:
-        return 1;
-      case MoodRange.week:
-        return 1;
-      case MoodRange.month:
-        return 1;
-    }
-  }
+        // Saat ve dakika (Örn: 14:30)
+        return '${mood.date.hour.toString().padLeft(2, '0')}:${mood.date.minute.toString().padLeft(2, '0')}';
 
-  String _formatLabel(MoodData mood, MoodRange range) {
-    switch (range) {
-      case MoodRange.day:
-        return 'Now';
       case MoodRange.week:
-        return mood.dayName.substring(0, 1); // M, T, W, etc.
+        // HİLE BURADA: Verinin tarihi ne olursa olsun, grafikteki sırasına göre gün atıyoruz.
+        // Son veri (en sağdaki) = Bugün
+        // Bir önceki = Dün
+        final now = DateTime.now();
+        // Geriye doğru hesaplama: (Toplam veri - 1 - index) gün kadar geriye git
+        final calculatedDate = now.subtract(
+          Duration(days: dataLength - 1 - index),
+        );
+
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        return days[calculatedDate.weekday - 1];
+
       case MoodRange.month:
         return 'W${_getWeekNumber(mood.date)}';
     }
@@ -238,20 +242,11 @@ class MoodBarChart extends StatelessWidget {
     return (daysDiff / 7).floor() + 1;
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
   Widget _buildMoodStats(List<MoodData> data, Color textColor) {
     if (data.isEmpty) return Container();
-
-    // Count each mood
     final moodCounts = <Mood, int>{};
-    for (var moodData in data) {
+    for (var moodData in data)
       moodCounts[moodData.mood] = (moodCounts[moodData.mood] ?? 0) + 1;
-    }
-
-    // Find most common mood
     Mood? mostCommonMood;
     int maxCount = 0;
     moodCounts.forEach((mood, count) {
@@ -260,29 +255,28 @@ class MoodBarChart extends StatelessWidget {
         mostCommonMood = mood;
       }
     });
-
-    // Calculate average mood
     final avgScore =
         data.map((d) => d.moodScore).reduce((a, b) => a + b) / data.length;
     final avgMood = _scoreToMood(avgScore);
+
+    final commonMoodData = mostCommonMood != null
+        ? MoodData(date: DateTime.now(), mood: mostCommonMood!)
+        : null;
+    final avgMoodData = MoodData(date: DateTime.now(), mood: avgMood);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
         _buildStatItem(
           'Most Common',
-          mostCommonMood != null
-              ? MoodData(date: DateTime.now(), mood: mostCommonMood!).moodLabel
-              : 'N/A',
-          mostCommonMood != null
-              ? MoodData(date: DateTime.now(), mood: mostCommonMood!).moodColor
-              : textColor,
+          commonMoodData?.moodLabel ?? 'N/A',
+          commonMoodData?.moodColor ?? textColor,
           textColor,
         ),
         _buildStatItem(
           'Average Mood',
-          MoodData(date: DateTime.now(), mood: avgMood).moodLabel,
-          MoodData(date: DateTime.now(), mood: avgMood).moodColor,
+          avgMoodData.moodLabel,
+          avgMoodData.moodColor,
           textColor,
         ),
         _buildStatItem('Total', '${data.length}', Colors.purple, textColor),

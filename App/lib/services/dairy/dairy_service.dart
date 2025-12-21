@@ -1,4 +1,5 @@
 // lib/services/diary_service.dart
+
 import 'package:http/http.dart' as DiaryRepoDelete;
 import 'package:mentra_app/services/dairy/dairy_repo_analyze.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_fetch.dart';
@@ -28,17 +29,25 @@ class DiaryService {
   static Future<void> deleteDiaryEntry(String id) =>
       DiaryRepoDelete.delete(id as Uri);
 
+  // --- GÜNCELLENEN KISIM ---
+  // lib/services/diary_service.dart içinde sadece bu fonksiyonu değiştir:
+
   static Future<Map<String, dynamic>> analyzeDiaries({
     required String characterType,
     required String sign,
     required String birthMap,
     int diaryCount = 10,
+    String? specificContent,
+    List<String>? specificIds, // <--- YENİ PARAMETRE
   }) => DiaryRepoAnalyze.analyze(
     cType: characterType,
     sign: sign,
     bMap: birthMap,
     count: diaryCount,
+    content: specificContent,
+    diaryIds: specificIds, // <--- Repo'ya iletiyoruz
   );
+  // -------------------------
 
   static Future<List<Map<String, dynamic>>> getAnalysisHistory({
     int limit = 10,
@@ -48,4 +57,16 @@ class DiaryService {
       DiaryRepoStats.getStats();
 
   static Future<bool> checkBackendHealth() => DiaryRepoHealth.check();
+
+  static Future<Map<String, dynamic>?> getAdviceByDiaryId(String id) async {
+    try {
+      final diary = await getDiaryEntry(id);
+      if (diary['advice'] != null || diary['analysis'] != null) {
+        return diary;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
 }
