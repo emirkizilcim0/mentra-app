@@ -298,20 +298,26 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                 mood = "Calm"
         
         # Save analysis if we have diaries
+        # Save analysis if we have diaries
         if diary_contents and connection_pool:
-            analysis_data = json.dumps({
+            # Prepare ALL analysis data including mood
+            analysis_data = {
                 "character_type": request.character_type,
                 "sign": request.sign,
                 "birth_map": request.birth_map,
-                "mood": mood
-            })
+                "mood": mood,
+                "advice": analysis_result["advice"],  # ADD THIS - store full advice
+                "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat())
+            }
             
             analysis_id = await connection_pool.fetchval('''
                 INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
                 VALUES ($1, $2, $3, $4, $5)
                 RETURNING id
             ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-                 len(diary_contents), analysis_data)
+                 len(diary_contents), json.dumps(analysis_data))  # Use json.dumps
+    
+        logger.info(f"✅ Analysis saved to PostgreSQL with ID: {analysis_id}")
         
         return {
             "advice": analysis_result["advice"],
@@ -331,16 +337,16 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             "diaries_analyzed": 0
         }
     
-    
+
 @app.get("/analysis/history/{user_id}")
-async def get_analysis_history(user_id: str, limit: int = 10):
+async def get_analysis_history(user_id: str, limit: int = 50):  # Increase default limit
     """Get previous analysis results for a user"""
     try:
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
         analyses = await connection_pool.fetch('''
-            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data
+            SELECT id, advice_text, diaries_analyzed, created_at, analysis_data
             FROM user_analyses 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
@@ -349,51 +355,91 @@ async def get_analysis_history(user_id: str, limit: int = 10):
         
         result_analyses = []
         for analysis in analyses:
-            # Parse analysis_data - it might be a string or dict
-            analysis_data_raw = analysis["analysis_data"]
+            # Parse analysis_data
             analysis_data = {}
+            analysis_data_raw = analysis["analysis_data"]
             
             if analysis_data_raw:
                 try:
                     if isinstance(analysis_data_raw, str):
-                        # Parse JSON string
                         analysis_data = json.loads(analysis_data_raw)
                     elif isinstance(analysis_data_raw, dict):
-                        # Already a dict
                         analysis_data = analysis_data_raw
-                    else:
-                        # Try to convert whatever it is
-                        analysis_data = dict(analysis_data_raw)
                 except Exception as e:
-                    logger.warning(f"Could not parse analysis_data: {e}, type: {type(analysis_data_raw)}")
+                    logger.warning(f"Could not parse analysis_data: {e}")
                     analysis_data = {}
             
-            # Extract mood and other fields with defaults
-            mood = analysis_data.get("mood", "Calm")
-            character_type = analysis_data.get("character_type", "Unknown")
-            sign = analysis_data.get("sign", "Unknown")
-            birth_map = analysis_data.get("birth_map", "Unknown")
-            
+            # Create a FLAT structure that matches Flutter's expectations
             result_analyses.append({
                 "id": analysis["id"],
-                "type": analysis["analysis_type"],
-                "advice": analysis["advice_text"],
+                "advice": analysis["advice_text"],  # Direct from advice_text column
+                "analysis": analysis["advice_text"],  # Same as advice for compatibility
+                "mood": analysis_data.get("mood", "Calm"),
+                "character_type": analysis_data.get("character_type", "Unknown"),
+                "sign": analysis_data.get("sign", "Unknown"),
+                "birth_map": analysis_data.get("birth_map", "Unknown"),
                 "diaries_analyzed": analysis["diaries_analyzed"],
                 "date": analysis["created_at"].isoformat(),
-                "analysis_data": analysis_data,
-                "mood": mood,
-                "character_type": character_type,
-                "sign": sign,
-                "birth_map": birth_map
+                "analysis_date": analysis_data.get("analysis_date", analysis["created_at"].isoformat()),
+                "created_at": analysis["created_at"].isoformat(),
             })
         
         return {
-            "analyses": result_analyses
+            "analyses": result_analyses  # Return array directly, not nested
         }
         
     except Exception as e:
-        logger.error(f"Error fetching analysis history: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch analysis history")
+        logger.error(f"Error fetching analysis history: {e}", exc_info=True)
+        return {"analyses": []}  # Return empty array instead of raising error
+
+
+@app.post("/analyses/save")
+async def save_analysis(user_id: str, analysis_data: dict):
+    """Save an analysis result to the database"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        # Extract data with defaults
+        advice = analysis_data.get("advice", "") or analysis_data.get("analysis", "")
+        mood = analysis_data.get("mood", "Calm")
+        character_type = analysis_data.get("character_type", "Unknown")
+        sign = analysis_data.get("sign", "Unknown")
+        birth_map = analysis_data.get("birth_map", "Unknown")
+        
+        # Prepare analysis_data JSON
+        full_analysis_data = {
+            "character_type": character_type,
+            "sign": sign,
+            "birth_map": birth_map,
+            "mood": mood,
+            "advice": advice,
+            "analysis_date": datetime.utcnow().isoformat()
+        }
+        
+        analysis_id = await connection_pool.fetchval('''
+            INSERT INTO user_analyses (
+                user_id, analysis_type, advice_text, 
+                diaries_analyzed, analysis_data
+            ) VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        ''', 
+            user_id, 
+            "diary_analysis", 
+            advice,
+            1,  # Always 1 diary analyzed
+            json.dumps(full_analysis_data)
+        )
+        
+        return {
+            "message": "Analysis saved successfully",
+            "analysis_id": analysis_id,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving analysis: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save analysis: {e}")
 
 @app.delete("/diaries/{diary_id}")
 async def delete_diary(diary_id: int, user_id: str):

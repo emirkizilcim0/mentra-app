@@ -6,11 +6,17 @@ import 'package:provider/provider.dart';
 import 'advice_view_body.dart';
 
 class AdvicePage extends StatefulWidget {
-  // 1. BU İKİ DEĞİŞKENİ EKLE: Dışarıdan veri alabilmesi için
   final String? generatedAdvice;
   final String? date;
+  final Map<String, dynamic>?
+  fullAnalysisData; // NEW: Accept full analysis data
 
-  const AdvicePage({super.key, this.generatedAdvice, this.date});
+  const AdvicePage({
+    super.key,
+    this.generatedAdvice,
+    this.date,
+    this.fullAnalysisData, // NEW
+  });
 
   @override
   State<AdvicePage> createState() => _AdvicePageState();
@@ -24,23 +30,47 @@ class _AdvicePageState extends State<AdvicePage> {
   @override
   void initState() {
     super.initState();
-    // 2. KONTROL MANTIĞI: Veri geldi mi yoksa geçmişi mi çekelim?
-    if (widget.generatedAdvice != null) {
-      // Eğer ChatPage'den veri geldiyse, direkt onu ekrana bas
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    // Always load history first
+    await _loadAnalyses();
+
+    // Then check if we have new generated advice to prepend
+    if (widget.fullAnalysisData != null) {
+      // Check if this analysis already exists in the list
+      final existingIndex = analyses.indexWhere(
+        (item) =>
+            item['analysis_date'] ==
+                widget.fullAnalysisData!['analysis_date'] ||
+            (item['advice'] ?? '').contains(widget.generatedAdvice ?? ''),
+      );
+
+      if (existingIndex == -1) {
+        // NEW: Add the full analysis data to the beginning
+        setState(() {
+          analyses.insert(0, widget.fullAnalysisData!);
+        });
+      }
+    } else if (widget.generatedAdvice != null) {
+      // Legacy support: If only generatedAdvice is provided
+      final newAnalysis = {
+        'analysis': widget.generatedAdvice,
+        'advice': widget.generatedAdvice, // Add advice field for compatibility
+        'created_at': widget.date ?? DateTime.now().toString(),
+        'analysis_date': widget.date ?? DateTime.now().toString(),
+        'is_new': true, // Flag to mark as new
+      };
+
       setState(() {
-        analyses = [
-          {
-            'analysis': widget
-                .generatedAdvice, // AdviceViewBody'nin beklediği key (muhtemelen 'analysis' veya 'content')
-            'created_at': widget.date ?? DateTime.now().toString(),
-          },
-        ];
-        isLoading = false;
+        analyses.insert(0, newAnalysis);
       });
-    } else {
-      // Veri gelmediyse (Menüden açıldıysa) geçmişi yükle
-      _loadAnalyses();
     }
+
+    setState(() {
+      isLoading = false;
+    });
   }
 
   Future<void> _loadAnalyses() async {
@@ -49,15 +79,49 @@ class _AdvicePageState extends State<AdvicePage> {
         isLoading = true;
         errorMessage = null;
       });
+
       final items = await DiaryService.getAnalysisHistory(limit: 50);
+
+      print('📊 Loaded ${items.length} items from history');
+
+      // If no items from history AND we have new analysis, use that
+      if (items.isEmpty && widget.fullAnalysisData != null) {
+        print('📝 Using fullAnalysisData since history is empty');
+        setState(() {
+          analyses = [widget.fullAnalysisData!];
+          isLoading = false;
+        });
+        return;
+      }
+
+      // Transform items to match the expected format
+      final transformedItems = items.map((item) {
+        return {
+          ...item,
+          'analysis':
+              item['advice'] ??
+              item['analysis'] ??
+              '', // Ensure 'analysis' field exists
+          'created_at':
+              item['date'] ?? item['created_at'] ?? DateTime.now().toString(),
+          'analysis_date':
+              item['date'] ??
+              item['analysis_date'] ??
+              DateTime.now().toString(),
+          'is_new': false,
+        };
+      }).toList();
+
       setState(() {
-        analyses = items;
+        analyses = transformedItems;
         isLoading = false;
       });
     } catch (e) {
+      print("❌ Error loading analyses: $e");
       setState(() {
         isLoading = false;
         errorMessage = "Advices aren't available at the moment.";
+        analyses = []; // Ensure empty list on error
       });
     }
   }
@@ -65,6 +129,7 @@ class _AdvicePageState extends State<AdvicePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+
     return Scaffold(
       backgroundColor: isDark
           ? const Color(0xFF121212)
@@ -72,8 +137,15 @@ class _AdvicePageState extends State<AdvicePage> {
       appBar: AppBar(
         title: const Text('Advice'),
         actions: [
-          // Eğer tek bir advice gösteriyorsak refresh butonu geçmişe dönmeyi sağlayabilir
-          IconButton(onPressed: _loadAnalyses, icon: const Icon(Icons.refresh)),
+          IconButton(
+            onPressed: () {
+              setState(() {
+                isLoading = true;
+              });
+              _initializeData();
+            },
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
       body: AdviceViewBody(

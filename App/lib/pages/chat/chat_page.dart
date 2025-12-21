@@ -161,8 +161,11 @@ class _ChatPageState extends State<ChatPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                AdviceDetailPage(analysisItem: entry, title: "Daily Advice"),
+            builder: (context) => AdviceDetailPage(
+              analysisItem: entry,
+              title: "Daily Advice",
+              shouldSaveToHistory: false, // Already saved
+            ),
           ),
         );
         setState(() {
@@ -223,7 +226,6 @@ class _ChatPageState extends State<ChatPage> {
 
       // Sayfayı Aç
       if (finalData != null) {
-        // ... (Veri hazırlama kısmı aynı) ...
         if (entry != null) {
           finalData['date'] = entry['date'];
           finalData['formattedDate'] = _formatDate(entry['date']);
@@ -242,6 +244,7 @@ class _ChatPageState extends State<ChatPage> {
               builder: (context) => AdviceDetailPage(
                 analysisItem: finalData!,
                 title: "Analysis Result",
+                shouldSaveToHistory: true, // ADD THIS - CRITICAL!
               ),
             ),
           );
