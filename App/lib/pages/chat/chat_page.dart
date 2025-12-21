@@ -71,10 +71,19 @@ class _ChatPageState extends State<ChatPage> {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        // Ensure all analyses have has_advice = true
-        return data.map((item) {
-          Map<String, dynamic> analysis = item as Map<String, dynamic>;
-          analysis['has_advice'] = true; // Always true from PostgreSQL
+
+        // Process each analysis to ensure has_advice is true
+        return data.map<Map<String, dynamic>>((item) {
+          final analysis = item as Map<String, dynamic>;
+
+          // Ensure has_advice is always true from PostgreSQL
+          analysis['has_advice'] = true;
+
+          // Also ensure the diary_id field exists (some APIs might use different names)
+          if (analysis['diary_id'] == null && analysis['id'] != null) {
+            analysis['diary_id'] = analysis['id'].toString();
+          }
+
           return analysis;
         }).toList();
       } else {
@@ -92,7 +101,7 @@ class _ChatPageState extends State<ChatPage> {
     try {
       print('📤 Saving analysis for diary: ${analysisData['diary_id']}');
 
-      // Ensure has_advice is included
+      // Ensure has_advice is always true
       analysisData['has_advice'] = true;
 
       final response = await http.post(
@@ -104,11 +113,10 @@ class _ChatPageState extends State<ChatPage> {
         body: json.encode(analysisData),
       );
 
-      // Handle 404 as "probably saved" (your API returns 404 but saves)
-      if (response.statusCode == 201 ||
-          response.statusCode == 200 ||
+      if (response.statusCode == 200 ||
+          response.statusCode == 201 ||
           response.statusCode == 404) {
-        print('✅ Analysis saved to PostgreSQL');
+        print('✅ Analysis saved to PostgreSQL with has_advice=true');
         return true;
       } else {
         print('❌ API Save Error: ${response.statusCode} - ${response.body}');

@@ -58,8 +58,9 @@ async def create_db_pool():
         max_inactive_connection_lifetime=300,
     )
     
-    # Create tables for diaries
+    # Create tables for diaries and analyses
     async with connection_pool.acquire() as conn:
+        # Create user_diaries table
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS user_diaries (
                 id SERIAL PRIMARY KEY,
@@ -70,7 +71,10 @@ async def create_db_pool():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
+        ''')
+        
+        # Create user_analyses table
+        await conn.execute('''
             CREATE TABLE IF NOT EXISTS user_analyses (
                 id SERIAL PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
@@ -78,14 +82,42 @@ async def create_db_pool():
                 advice_text TEXT NOT NULL,
                 diaries_analyzed INTEGER,
                 analysis_data JSONB,
+                has_advice BOOLEAN DEFAULT TRUE,  -- NEW COLUMN
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
-            CREATE INDEX IF NOT EXISTS idx_user_diaries_user_id ON user_diaries(user_id);
-            CREATE INDEX IF NOT EXISTS idx_user_diaries_created_at ON user_diaries(created_at);
         ''')
         
-        # Update existing records to have mood in analysis_data
+        # Create the separate analyses table for Flutter app
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS analyses (
+                id SERIAL PRIMARY KEY,
+                diary_id VARCHAR(255) NOT NULL UNIQUE,
+                advice TEXT NOT NULL,
+                analysis TEXT NOT NULL,
+                mood VARCHAR(100) DEFAULT 'Calm',
+                character_type VARCHAR(100),
+                sign VARCHAR(100),
+                has_advice BOOLEAN DEFAULT TRUE,  -- NEW COLUMN
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
+        
+        # Create indexes
+        await conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_user_diaries_user_id ON user_diaries(user_id);
+            CREATE INDEX IF NOT EXISTS idx_user_diaries_created_at ON user_diaries(created_at);
+            CREATE INDEX IF NOT EXISTS idx_analyses_diary_id ON analyses(diary_id);
+            CREATE INDEX IF NOT EXISTS idx_analyses_has_advice ON analyses(has_advice);
+        ''')
+        
+        # Update existing records in analyses table to have has_advice = TRUE
+        await conn.execute('''
+            UPDATE analyses 
+            SET has_advice = TRUE 
+            WHERE has_advice IS NULL OR has_advice = FALSE;
+        ''')
+        
+        # Update existing records in user_analyses to have mood in analysis_data
         await conn.execute('''
             UPDATE user_analyses 
             SET analysis_data = jsonb_set(
@@ -104,7 +136,7 @@ async def create_db_pool():
             WHERE analysis_data IS NULL OR analysis_data->>'mood' IS NULL OR analysis_data->>'mood' = '';
         ''')
         
-        # Also add character_type, sign, and birth_map if missing
+        # Also add character_type, sign, and birth_map if missing in user_analyses
         await conn.execute('''
             UPDATE user_analyses 
             SET analysis_data = jsonb_set(
@@ -131,7 +163,7 @@ async def create_db_pool():
             WHERE analysis_data->>'birth_map' IS NULL;
         ''')
         
-    logger.info("Database tables created and existing data updated with mood extraction")
+    logger.info("Database tables created and existing data updated with has_advice column")
 
 @app.on_event("startup")
 async def startup_event():
@@ -153,7 +185,7 @@ class DiaryAnalysisRequest(BaseModel):
     character_type: str
     sign: str
     birth_map: str
-    diary_count: Optional[int] = 10  # Number of recent diaries to analyze
+    diary_count: Optional[int] = 10
 
 class AnalysisResponse(BaseModel):
     advice: str
@@ -162,13 +194,23 @@ class AnalysisResponse(BaseModel):
     analysis_date: str
     diaries_analyzed: int
 
+# NEW: Pydantic model for Flutter analyses
+class FlutterAnalysis(BaseModel):
+    diary_id: str
+    advice: str
+    analysis: str
+    mood: Optional[str] = "Calm"
+    character_type: Optional[str] = None
+    sign: Optional[str] = None
+    has_advice: Optional[bool] = True  # NEW field
+
 @app.get("/")
 async def home():
     return {
         "message": "Mentra Backend is running!", 
         "timestamp": datetime.utcnow().isoformat(),
         "status": "healthy",
-        "features": ["diary_analysis", "personality_advice"]
+        "features": ["diary_analysis", "personality_advice", "flutter_analyses"]
     }
 
 @app.post("/diaries/save")
@@ -265,16 +307,17 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             "character_type": request.character_type,
             "sign": request.sign,
             "birth_map": request.birth_map,
-            "mood": analysis_result.get("mood", "Calm")
+            "mood": analysis_result.get("mood", "Calm"),
+            "has_advice": True  # NEW: Always true
         })
         
         # Save the analysis result
         analysis_id = await connection_pool.fetchval('''
-            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
         ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-             len(diaries), analysis_data)
+             len(diaries), analysis_data, True)
         
         # Also return the mood in the response
         return {
@@ -282,7 +325,8 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             "mood": analysis_result.get("mood", "Calm"),
             "status": "success",
             "analysis_date": analysis_result["analysis_date"],
-            "diaries_analyzed": analysis_result["diaries_analyzed"]
+            "diaries_analyzed": analysis_result["diaries_analyzed"],
+            "has_advice": True  # NEW: Always return true
         }
         
     except Exception as e:
@@ -293,7 +337,8 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             "mood": "Calm",
             "status": "success",
             "analysis_date": datetime.utcnow().isoformat(),
-            "diaries_analyzed": 0
+            "diaries_analyzed": 0,
+            "has_advice": True  # NEW: Even fallback has advice
         }
     
 @app.get("/analysis/history/{user_id}")
@@ -304,7 +349,7 @@ async def get_analysis_history(user_id: str, limit: int = 10):
             raise HTTPException(status_code=500, detail="Database not configured")
         
         analyses = await connection_pool.fetch('''
-            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data
+            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data, has_advice
             FROM user_analyses 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
@@ -332,11 +377,12 @@ async def get_analysis_history(user_id: str, limit: int = 10):
                     logger.warning(f"Could not parse analysis_data: {e}, type: {type(analysis_data_raw)}")
                     analysis_data = {}
             
-            # Extract mood and other fields with defaults
+            # Extract fields with defaults
             mood = analysis_data.get("mood", "Calm")
             character_type = analysis_data.get("character_type", "Unknown")
             sign = analysis_data.get("sign", "Unknown")
             birth_map = analysis_data.get("birth_map", "Unknown")
+            has_advice = analysis["has_advice"] if analysis["has_advice"] is not None else True
             
             result_analyses.append({
                 "id": analysis["id"],
@@ -348,7 +394,8 @@ async def get_analysis_history(user_id: str, limit: int = 10):
                 "mood": mood,
                 "character_type": character_type,
                 "sign": sign,
-                "birth_map": birth_map
+                "birth_map": birth_map,
+                "has_advice": has_advice  # NEW: Include has_advice
             })
         
         return {
@@ -385,7 +432,139 @@ async def delete_diary(diary_id: int, user_id: str):
         logger.error(f"Error deleting diary: $e")
         raise HTTPException(status_code=500, detail="Failed to delete diary")
 
-# Add a test endpoint to verify JSONB works
+# ==================== FLUTTER ANALYSES ENDPOINTS ====================
+
+@app.get("/analyses")
+async def get_all_analyses():
+    """Get all analyses for Flutter app"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        analyses = await connection_pool.fetch('''
+            SELECT id, diary_id, advice, analysis, mood, character_type, sign, has_advice, created_at
+            FROM analyses 
+            ORDER BY created_at DESC
+        ''')
+        
+        return [
+            {
+                "id": analysis["id"],
+                "diary_id": analysis["diary_id"],
+                "advice": analysis["advice"],
+                "analysis": analysis["analysis"],
+                "mood": analysis["mood"] or "Calm",
+                "character_type": analysis["character_type"],
+                "sign": analysis["sign"],
+                "has_advice": bool(analysis["has_advice"]) if analysis["has_advice"] is not None else True,  # Ensure boolean
+                "created_at": analysis["created_at"].isoformat()
+            }
+            for analysis in analyses
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error fetching analyses: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analyses")
+
+@app.post("/analyses")
+async def create_analysis(analysis: FlutterAnalysis):
+    """Create a new analysis for Flutter app"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        # Ensure has_advice is always True
+        has_advice = analysis.has_advice if analysis.has_advice is not None else True
+        
+        # Upsert: Insert or update if diary_id already exists
+        analysis_id = await connection_pool.fetchval('''
+            INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (diary_id) 
+            DO UPDATE SET 
+                advice = EXCLUDED.advice,
+                analysis = EXCLUDED.analysis,
+                mood = EXCLUDED.mood,
+                character_type = EXCLUDED.character_type,
+                sign = EXCLUDED.sign,
+                has_advice = EXCLUDED.has_advice,
+                created_at = CURRENT_TIMESTAMP
+            RETURNING id
+        ''', analysis.diary_id, analysis.advice, analysis.analysis, 
+             analysis.mood, analysis.character_type, analysis.sign, has_advice)
+        
+        return {
+            "message": "Analysis saved successfully",
+            "analysis_id": analysis_id,
+            "has_advice": has_advice,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving analysis: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save analysis")
+
+@app.get("/analyses/{diary_id}")
+async def get_analysis_by_diary_id(diary_id: str):
+    """Get analysis by diary ID"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        analysis = await connection_pool.fetchrow('''
+            SELECT id, diary_id, advice, analysis, mood, character_type, sign, has_advice, created_at
+            FROM analyses 
+            WHERE diary_id = $1
+        ''', diary_id)
+        
+        if not analysis:
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        
+        return {
+            "id": analysis["id"],
+            "diary_id": analysis["diary_id"],
+            "advice": analysis["advice"],
+            "analysis": analysis["analysis"],
+            "mood": analysis["mood"] or "Calm",
+            "character_type": analysis["character_type"],
+            "sign": analysis["sign"],
+            "has_advice": bool(analysis["has_advice"]) if analysis["has_advice"] is not None else True,
+            "created_at": analysis["created_at"].isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching analysis: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analysis")
+
+@app.delete("/analyses/{diary_id}")
+async def delete_analysis(diary_id: str):
+    """Delete analysis by diary ID"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        result = await connection_pool.execute('''
+            DELETE FROM analyses 
+            WHERE diary_id = $1
+        ''', diary_id)
+        
+        if result == "DELETE 0":
+            raise HTTPException(status_code=404, detail="Analysis not found")
+        
+        return {
+            "message": "Analysis deleted successfully",
+            "status": "success"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting analysis: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete analysis")
+
+# Test endpoint to verify JSONB works
 @app.get("/test-jsonb")
 async def test_jsonb():
     """Test JSONB insertion and retrieval"""
@@ -397,27 +576,62 @@ async def test_jsonb():
             "character_type": "ISTJ", 
             "sign": "Aquarius", 
             "birth_map": "Test",
+            "mood": "Calm",
+            "has_advice": True,
             "test_timestamp": datetime.utcnow().isoformat()
         }
         
         # Test insertion with json.dumps
         analysis_id = await connection_pool.fetchval('''
-            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
-        ''', "test_user", "test_analysis", "This is a test advice", 1, json.dumps(test_data))
+        ''', "test_user", "test_analysis", "This is a test advice", 1, json.dumps(test_data), True)
         
         # Test retrieval
         result = await connection_pool.fetchrow('''
-            SELECT analysis_data FROM user_analyses WHERE id = $1
+            SELECT analysis_data, has_advice FROM user_analyses WHERE id = $1
         ''', analysis_id)
         
         return {
             "success": True,
             "inserted_id": analysis_id,
             "retrieved_data": result["analysis_data"],
+            "retrieved_has_advice": result["has_advice"],
             "message": "JSONB test completed successfully"
         }
+        
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
+# Endpoint to check database schema
+@app.get("/check-schema")
+async def check_schema():
+    """Check if analyses table has has_advice column"""
+    try:
+        if not connection_pool:
+            return {"error": "No database connection"}
+        
+        # Check if analyses table exists and has has_advice column
+        result = await connection_pool.fetchrow('''
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'analyses' AND column_name = 'has_advice'
+        ''')
+        
+        if result:
+            return {
+                "success": True,
+                "has_advice_column_exists": True,
+                "column_type": result["data_type"],
+                "message": "analyses table has has_advice column"
+            }
+        else:
+            return {
+                "success": False,
+                "has_advice_column_exists": False,
+                "message": "analyses table does not have has_advice column"
+            }
         
     except Exception as e:
         return {"error": str(e), "success": False}
