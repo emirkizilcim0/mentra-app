@@ -153,10 +153,7 @@ class DiaryAnalysisRequest(BaseModel):
     character_type: str
     sign: str
     birth_map: str
-    diary_count: Optional[int] = 10
-    specific_content: Optional[str] = None  
-    specific_ids: Optional[List[int]] = None  
-    diaries: Optional[List[str]] = None  
+    diary_count: Optional[int] = 10  # Number of recent diaries to analyze
 
 class AnalysisResponse(BaseModel):
     advice: str
@@ -234,48 +231,24 @@ async def get_user_diaries(user_id: str, limit: int = 20):
 async def analyze_diaries(request: DiaryAnalysisRequest):
     """Analyze user diaries and provide psychological advice"""
     try:
-        diary_contents = []
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
         
-        # LOG what we receive
-        logger.info(f"Received analysis request. Specific content: {request.specific_content is not None}")
-        logger.info(f"Direct diaries sent: {request.diaries is not None and len(request.diaries) > 0}")
+        # Get recent diaries for the user
+        diaries = await connection_pool.fetch('''
+            SELECT content, mood, tags, created_at
+            FROM user_diaries 
+            WHERE user_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT $2
+        ''', request.user_id, request.diary_count)
         
-        # OPTION 1: If specific content is provided directly
-        if request.specific_content:
-            logger.info(f"Using specific content: {request.specific_content[:100]}...")
-            diary_contents = [request.specific_content]
+        # Prepare diary contents for analysis
+        diary_contents = [diary["content"] for diary in diaries]
         
-        # OPTION 2: If diaries are provided directly in the request
-        elif request.diaries and len(request.diaries) > 0:
-            logger.info(f"Using direct diaries: {len(request.diaries)} entries")
-            diary_contents = request.diaries
-        
-        # OPTION 3: If specific IDs are provided, fetch those
-        elif request.specific_ids and connection_pool:
-            logger.info(f"Fetching specific IDs: {request.specific_ids}")
-            diaries = await connection_pool.fetch('''
-                SELECT content FROM user_diaries 
-                WHERE id = ANY($1) AND user_id = $2
-                ORDER BY created_at DESC
-            ''', request.specific_ids, request.user_id)
-            diary_contents = [diary["content"] for diary in diaries]
-        
-        # OPTION 4: Default - get recent diaries from database
-        elif connection_pool:
-            logger.info(f"Fetching recent diaries, count: {request.diary_count}")
-            diaries = await connection_pool.fetch('''
-                SELECT content, mood, tags, created_at
-                FROM user_diaries 
-                WHERE user_id = $1 
-                ORDER BY created_at DESC 
-                LIMIT $2
-            ''', request.user_id, request.diary_count)
-            diary_contents = [diary["content"] for diary in diaries]
-        
-        logger.info(f"Total diary contents for analysis: {len(diary_contents)}")
-        
-        # Get psychological advice
+        # Get psychological advice (this will handle empty diaries gracefully)
         advisor = get_psychologist()
+
         analysis_result = advisor.analyze_diaries(
             diaries=diary_contents,
             character_type=request.character_type,
@@ -283,52 +256,38 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             birth_map=request.birth_map
         )
 
-        # FIX: Ensure mood is always present
-        mood = analysis_result.get("mood")
-        if not mood:
-            # Extract from advice or use default
-            advice_text = analysis_result.get("advice", "").lower()
-            if any(word in advice_text for word in ["anxious", "anxiety", "stress"]):
-                mood = "Anxious"
-            elif any(word in advice_text for word in ["happy", "joy", "excited"]):
-                mood = "Happy"
-            elif any(word in advice_text for word in ["sad", "depressed", "unhappy"]):
-                mood = "Sad"
-            else:
-                mood = "Calm"
+        if analysis_result["status"] == "error":
+            # Even if there's an error, we return the fallback advice
+            logger.error(f"Analysis error: {analysis_result.get('error')}")
         
-        # Save analysis if we have diaries
-        # Save analysis if we have diaries
-        if diary_contents and connection_pool:
-            # Prepare ALL analysis data including mood
-            analysis_data = {
-                "character_type": request.character_type,
-                "sign": request.sign,
-                "birth_map": request.birth_map,
-                "mood": mood,
-                "advice": analysis_result["advice"],  # ADD THIS - store full advice
-                "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat())
-            }
-            
-            analysis_id = await connection_pool.fetchval('''
-                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id
-            ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-                 len(diary_contents), json.dumps(analysis_data))  # Use json.dumps
-    
-        logger.info(f"✅ Analysis saved to PostgreSQL with ID: {analysis_id}")
+        # Save the mood in analysis_data - use json.dumps
+        analysis_data = json.dumps({
+            "character_type": request.character_type,
+            "sign": request.sign,
+            "birth_map": request.birth_map,
+            "mood": analysis_result.get("mood", "Calm")
+        })
         
+        # Save the analysis result
+        analysis_id = await connection_pool.fetchval('''
+            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+        ''', request.user_id, "diary_analysis", analysis_result["advice"], 
+             len(diaries), analysis_data)
+        
+        # Also return the mood in the response
         return {
             "advice": analysis_result["advice"],
-            "mood": mood,
+            "mood": analysis_result.get("mood", "Calm"),
             "status": "success",
-            "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat()),
-            "diaries_analyzed": analysis_result.get("diaries_analyzed", len(diary_contents))
+            "analysis_date": analysis_result["analysis_date"],
+            "diaries_analyzed": analysis_result["diaries_analyzed"]
         }
         
     except Exception as e:
-        logger.error(f"Error analyzing diaries: {e}", exc_info=True)
+        logger.error(f"Error analyzing diaries: {e}")
+        # Provide a basic fallback response
         return {
             "advice": "I'm here to help you with psychological insights! Start by writing your first diary entry to get personalized advice.",
             "mood": "Calm",
@@ -337,16 +296,15 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             "diaries_analyzed": 0
         }
     
-
 @app.get("/analysis/history/{user_id}")
-async def get_analysis_history(user_id: str, limit: int = 50):  # Increase default limit
+async def get_analysis_history(user_id: str, limit: int = 10):
     """Get previous analysis results for a user"""
     try:
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
         analyses = await connection_pool.fetch('''
-            SELECT id, advice_text, diaries_analyzed, created_at, analysis_data
+            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data
             FROM user_analyses 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
@@ -355,98 +313,51 @@ async def get_analysis_history(user_id: str, limit: int = 50):  # Increase defau
         
         result_analyses = []
         for analysis in analyses:
-            # Parse analysis_data
-            analysis_data = {}
+            # Parse analysis_data - it might be a string or dict
             analysis_data_raw = analysis["analysis_data"]
+            analysis_data = {}
             
             if analysis_data_raw:
                 try:
                     if isinstance(analysis_data_raw, str):
+                        # Parse JSON string
                         analysis_data = json.loads(analysis_data_raw)
                     elif isinstance(analysis_data_raw, dict):
+                        # Already a dict
                         analysis_data = analysis_data_raw
+                    else:
+                        # Try to convert whatever it is
+                        analysis_data = dict(analysis_data_raw)
                 except Exception as e:
-                    logger.warning(f"Could not parse analysis_data: {e}")
+                    logger.warning(f"Could not parse analysis_data: {e}, type: {type(analysis_data_raw)}")
                     analysis_data = {}
             
-            # Create a FLAT structure that matches Flutter's expectations
+            # Extract mood and other fields with defaults
+            mood = analysis_data.get("mood", "Calm")
+            character_type = analysis_data.get("character_type", "Unknown")
+            sign = analysis_data.get("sign", "Unknown")
+            birth_map = analysis_data.get("birth_map", "Unknown")
+            
             result_analyses.append({
                 "id": analysis["id"],
-                "advice": analysis["advice_text"],  # Direct from advice_text column
-                "analysis": analysis["advice_text"],  # Same as advice for compatibility
-                "mood": analysis_data.get("mood", "Calm"),
-                "character_type": analysis_data.get("character_type", "Unknown"),
-                "sign": analysis_data.get("sign", "Unknown"),
-                "birth_map": analysis_data.get("birth_map", "Unknown"),
+                "type": analysis["analysis_type"],
+                "advice": analysis["advice_text"],
                 "diaries_analyzed": analysis["diaries_analyzed"],
                 "date": analysis["created_at"].isoformat(),
-                "analysis_date": analysis_data.get("analysis_date", analysis["created_at"].isoformat()),
-                "created_at": analysis["created_at"].isoformat(),
+                "analysis_data": analysis_data,
+                "mood": mood,
+                "character_type": character_type,
+                "sign": sign,
+                "birth_map": birth_map
             })
         
         return {
-            "analyses": result_analyses  # Return array directly, not nested
+            "analyses": result_analyses
         }
         
     except Exception as e:
-        logger.error(f"Error fetching analysis history: {e}", exc_info=True)
-        return {"analyses": []}  # Return empty array instead of raising error
-
-
-class SaveAnalysisRequest(BaseModel):
-    user_id: str
-    character_type: str
-    sign: str
-    birth_map: str
-    advice: str
-    mood: str = "Calm"
-    analysis_date: str = None
-    diary_id: str = None  
-
-@app.post("/analyses/save")
-async def save_analysis(request: SaveAnalysisRequest):
-    """Save an analysis to PostgreSQL"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-        
-        analysis_date = request.analysis_date or datetime.utcnow().isoformat()
-        analysis_data = {
-            "character_type": request.character_type,
-            "sign": request.sign,
-            "birth_map": request.birth_map,
-            "mood": request.mood,
-            "analysis_date": analysis_date,
-            "diary_id": request.diary_id,
-            "advice": request.advice  # ADD THIS - store full advice text
-        }
-        
-        analysis_id = await connection_pool.fetchval('''
-            INSERT INTO user_analyses (
-                user_id, analysis_type, advice_text, 
-                diaries_analyzed, analysis_data
-            ) VALUES ($1, $2, $3, $4, $5)
-            RETURNING id
-        ''', 
-            request.user_id,
-            "diary_analysis",
-            request.advice,  # This goes in advice_text column
-            request.diaries_analyzed or 1,  # Use from request
-            json.dumps(analysis_data)  # Store everything else in analysis_data
-        )
-        
-        logger.info(f"✅ Analysis saved to PostgreSQL, ID: {analysis_id}")
-        
-        return {
-            "message": "Analysis saved successfully",
-            "id": analysis_id,  # RETURN THE ID HERE!
-            "analysis_id": analysis_id,
-            "status": "success"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error saving analysis: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save analysis: {e}")
+        logger.error(f"Error fetching analysis history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analysis history")
 
 @app.delete("/diaries/{diary_id}")
 async def delete_diary(diary_id: int, user_id: str):

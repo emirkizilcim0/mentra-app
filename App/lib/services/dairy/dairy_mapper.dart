@@ -14,37 +14,24 @@ class DiaryMapper {
     };
   }
 
-  static Map<String, dynamic> mapAnalysis(dynamic data) {
-    if (data is! Map) return {};
+  static Map<String, dynamic> mapAnalysis(dynamic item) {
+    print('🗺️ Mapping analysis - item keys: ${item.keys.toList()}');
+
+    // Debug mood specifically
+    final rawMood = item['mood'];
+    print('🎭 Raw mood from API: "$rawMood" (type: ${rawMood.runtimeType})');
 
     return {
-      'id': data['id']?.toString() ?? '',
-      'advice': data['advice'] ?? data['advice_text'] ?? '',
-      'analysis':
-          data['advice'] ??
-          data['advice_text'] ??
-          data['analysis'] ??
-          '', // CRITICAL
-      'mood': data['mood'] ?? 'Calm',
-      'character_type':
-          data['character_type'] ??
-          data['analysis_data']?['character_type'] ??
-          'Unknown',
-      'sign': data['sign'] ?? data['analysis_data']?['sign'] ?? 'Unknown',
-      'birth_map':
-          data['birth_map'] ??
-          data['analysis_data']?['birth_map'] ??
-          'Not specified',
-      'date':
-          data['date'] ??
-          data['created_at']?.toString() ??
-          DateTime.now().toString(),
-      'analysis_date':
-          data['analysis_date'] ??
-          data['created_at']?.toString() ??
-          DateTime.now().toString(),
-      'created_at': data['created_at']?.toString() ?? DateTime.now().toString(),
-      'diaries_analyzed': data['diaries_analyzed'] ?? 1,
+      'id': item['id']?.toString() ?? '',
+      'type': item['type'] ?? '',
+      'advice': item['advice'] ?? '',
+      'diaries_analyzed': item['diaries_analyzed'] ?? 0,
+      'date': item['date'] ?? '',
+      'formattedDate': DiaryHelpers.formatDate(item['date'] ?? ''),
+      'mood': item['mood'] ?? 'Calm', // Make sure this exists
+      'character_type': item['character_type'] ?? '',
+      'sign': item['sign'] ?? '',
+      'birth_map': item['birth_map'] ?? '',
     };
   }
 }

@@ -1,7 +1,6 @@
 // lib/services/diary_service.dart
 
 import 'package:http/http.dart' as DiaryRepoDelete;
-import 'dart:convert'; // ADD THIS
 import 'package:mentra_app/services/dairy/dairy_repo_analyze.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_fetch.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_health.dart';
@@ -10,15 +9,8 @@ import 'package:mentra_app/services/dairy/dairy_repo_save.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_single.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_stats.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_update.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ADD THIS for user_id
 
 class DiaryService {
-  // Helper method to get user_id
-  static Future<String> _getUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('user_id') ?? 'unknown_user';
-  }
-
   static Future<Map<String, dynamic>> saveDiaryEntry(
     Map<String, dynamic> entry,
   ) => DiaryRepoSave.save(entry);
@@ -37,31 +29,24 @@ class DiaryService {
   static Future<void> deleteDiaryEntry(String id) =>
       DiaryRepoDelete.delete(id as Uri);
 
-  // --- COMPLETELY UPDATED analyzeDiaries METHOD ---
+  // --- GÜNCELLENEN KISIM ---
+  // lib/services/diary_service.dart içinde sadece bu fonksiyonu değiştir:
+
   static Future<Map<String, dynamic>> analyzeDiaries({
     required String characterType,
     required String sign,
     required String birthMap,
     int diaryCount = 10,
     String? specificContent,
-    List<String>? specificIds,
-    List<Map<String, dynamic>>?
-    userDiaries, // NEW: For sending diary content directly
-  }) async {
-    // Get user ID first
-    final userId = await _getUserId();
-
-    return await DiaryRepoAnalyze.analyze(
-      cType: characterType,
-      sign: sign,
-      bMap: birthMap,
-      count: diaryCount,
-      content: specificContent,
-      diaryIds: specificIds,
-      userId: userId, // ADD THIS
-      userDiaries: userDiaries, // ADD THIS
-    );
-  }
+    List<String>? specificIds, // <--- YENİ PARAMETRE
+  }) => DiaryRepoAnalyze.analyze(
+    cType: characterType,
+    sign: sign,
+    bMap: birthMap,
+    count: diaryCount,
+    content: specificContent,
+    diaryIds: specificIds, // <--- Repo'ya iletiyoruz
+  );
   // -------------------------
 
   static Future<List<Map<String, dynamic>>> getAnalysisHistory({

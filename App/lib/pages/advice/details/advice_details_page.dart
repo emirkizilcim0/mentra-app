@@ -1,11 +1,8 @@
+// lib/advice_detail_page.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart'; // <--- EKLENDİ: Format için gerekli
 import 'package:mentra_app/providers/theme_provider.dart';
-import 'package:mentra_app/services/dairy/dairy_service.dart'; // ADD THIS IMPORT
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'advice_colors.dart';
 import 'advice_utils.dart';
 import 'comp_card.dart';
@@ -13,189 +10,19 @@ import 'comp_date.dart';
 import 'comp_title.dart';
 import 'comp_body.dart';
 
-class AdviceDetailPage extends StatefulWidget {
-  // CHANGED to StatefulWidget
+class AdviceDetailPage extends StatelessWidget {
   final Map<String, dynamic> analysisItem;
   final String title;
-  final bool shouldSaveToHistory; // NEW: Control whether to save
 
   const AdviceDetailPage({
     super.key,
     required this.analysisItem,
     required this.title,
-    this.shouldSaveToHistory = false, // NEW: Default is false
   });
 
-  @override
-  State<AdviceDetailPage> createState() => _AdviceDetailPageState();
-}
-
-class _AdviceDetailPageState extends State<AdviceDetailPage> {
-  bool _hasSaved = false;
-
-  Future<String> _getUserId() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Check for user_id in different possible keys
-      final userId =
-          prefs.getString('user_id') ??
-          prefs.getString('uid') ??
-          prefs.getString('userId') ??
-          'unknown_user';
-
-      print('🔑 Retrieved user_id from SharedPreferences: $userId');
-      return userId;
-    } catch (e) {
-      print('❌ Error getting user_id from SharedPreferences: $e');
-      return 'unknown_user';
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    // Save to history when the page opens (if needed)
-    if (widget.shouldSaveToHistory && !_hasSaved) {
-      _saveToHistory();
-    }
-  }
-
-  Future<void> _saveToHistory() async {
-    try {
-      // Check if this analysis already exists to avoid duplicates
-      final history = await DiaryService.getAnalysisHistory(limit: 50);
-      final currentDate =
-          widget.analysisItem['analysis_date'] ??
-          widget.analysisItem['date'] ??
-          DateTime.now().toString();
-
-      // Check for duplicates based on date/content
-      final isDuplicate = history.any((item) {
-        final itemDate = item['date'] ?? item['analysis_date'] ?? '';
-        final itemAdvice = item['advice'] ?? item['analysis'] ?? '';
-        final currentAdvice =
-            widget.analysisItem['advice'] ??
-            widget.analysisItem['analysis'] ??
-            '';
-
-        return itemDate.contains(currentDate.substring(0, 10)) || // Check date
-            itemAdvice.contains(
-              currentAdvice.substring(0, 50),
-            ); // Check content
-      });
-
-      if (!isDuplicate) {
-        // Prepare analysis data for saving
-        final Map<String, dynamic> analysisData = {
-          'character_type': widget.analysisItem['character_type'] ?? 'Unknown',
-          'sign': widget.analysisItem['sign'] ?? 'Unknown',
-          'birth_map': widget.analysisItem['birth_map'] ?? 'Not specified',
-          'mood': widget.analysisItem['mood'] ?? 'Calm',
-          'advice':
-              widget.analysisItem['advice'] ??
-              widget.analysisItem['analysis'] ??
-              '',
-          'analysis':
-              widget.analysisItem['analysis'] ??
-              widget.analysisItem['advice'] ??
-              '',
-          'analysis_date': currentDate,
-        };
-
-        // Save via backend API
-        // Note: This assumes your backend has an endpoint to save analyses
-        // If not, you might need to save to local storage or Firebase
-        await _saveAnalysisToBackend(analysisData);
-
-        setState(() {
-          _hasSaved = true;
-        });
-
-        print('✅ Analysis saved to history');
-      } else {
-        print('ℹ️ Analysis already exists in history');
-      }
-    } catch (e) {
-      print('❌ Error saving to history: $e');
-    }
-  }
-
-  Future<void> _saveAnalysisToBackend(Map<String, dynamic> analysisData) async {
-    try {
-      // IMPORTANT: You need to implement this method in DiaryService first!
-      // This sends the analysis to your backend to save in PostgreSQL
-
-      print('📤 Attempting to save analysis to backend...');
-      print('📋 Analysis data: $analysisData');
-
-      // Option 1: Call your existing save endpoint (if it exists)
-      // You need to create this method in DiaryService first!
-      // await DiaryService.saveAnalysis(analysisData);
-
-      // Option 2: Save directly via HTTP (immediate fix)
-      await _saveViaHttp(analysisData);
-    } catch (e) {
-      print('❌ Error in _saveAnalysisToBackend: $e');
-      // Fallback: Save to local storage as temporary backup
-      await _saveToLocalStorage(analysisData);
-    }
-  }
-
-  // Direct HTTP save method
-  Future<void> _saveViaHttp(Map<String, dynamic> analysisData) async {
-    try {
-      // Get your backend URL and user ID
-      final baseUrl = 'https://mentra-app.onrender.com'; // UPDATE THIS
-      final userId = await _getUserId(); // Get from SharedPreferences
-
-      // Create the request
-      final response = await http.post(
-        Uri.parse('$baseUrl/analyses/save'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'user_id': userId,
-          'character_type': analysisData['character_type'],
-          'sign': analysisData['sign'],
-          'birth_map': analysisData['birth_map'],
-          'advice': analysisData['advice'],
-          'mood': analysisData['mood'],
-          'analysis_date': analysisData['analysis_date'],
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        print('✅ Analysis saved via HTTP to PostgreSQL');
-      } else {
-        print('❌ HTTP save failed: ${response.statusCode} - ${response.body}');
-      }
-    } catch (e) {
-      print('❌ HTTP save error: $e');
-      rethrow;
-    }
-  }
-
-  // Fallback local storage
-  Future<void> _saveToLocalStorage(Map<String, dynamic> analysisData) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final List<String> history = prefs.getStringList('local_analyses') ?? [];
-
-      history.add(
-        json.encode({
-          ...analysisData,
-          'saved_locally_at': DateTime.now().toString(),
-        }),
-      );
-
-      await prefs.setStringList('local_analyses', history);
-      print('✅ Analysis saved to local storage as backup');
-    } catch (e) {
-      print('❌ Local storage save error: $e');
-    }
-  }
-
+  // --- EKLENEN FONKSİYON: US TARİH FORMATI ---
   String _formatDateUS(Map<String, dynamic> item) {
+    // Veriyi güvenli şekilde çekiyoruz
     final rawDate = item['formattedDate'] ?? item['created_at'] ?? item['date'];
 
     if (rawDate == null) return '';
@@ -207,39 +34,34 @@ class _AdviceDetailPageState extends State<AdviceDetailPage> {
       } else {
         date = DateTime.parse(rawDate.toString());
       }
+
+      // US Formatı: "December 20, 2025"
+      // toLocal() ekledim ki saat farkından gün kaymasın
       return DateFormat('d MMMM, yyyy', 'en_US').format(date.toLocal());
     } catch (_) {
       return rawDate.toString();
     }
   }
+  // ---------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
-    final mood = widget.analysisItem['mood'] ?? 'Calm';
+    final mood = analysisItem['mood'] ?? 'Calm';
     final emoji = _getEmojiForMood(mood);
     final moodColor = _getMoodColor(mood);
-    final formattedDate = _formatDateUS(widget.analysisItem);
+
+    // Tarihi formatlayıp değişkene atayalım
+    final formattedDate = _formatDateUS(analysisItem);
 
     return Scaffold(
       backgroundColor: AdviceColors.bg(isDark),
-      appBar: AppBar(
-        title: const Text('Advice'),
-        actions: [
-          // Optional: Add a save button for manual saving
-          if (widget.shouldSaveToHistory && !_hasSaved)
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _saveToHistory,
-              tooltip: 'Save to history',
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Advice')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Mood indicator
+            // Mood indicator at the top
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -275,7 +97,7 @@ class _AdviceDetailPageState extends State<AdviceDetailPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          formattedDate,
+                          formattedDate, // <--- GÜNCELLENDİ
                           style: TextStyle(
                             fontSize: 14,
                             color: isDark ? Colors.white70 : Colors.grey[600],
@@ -283,7 +105,7 @@ class _AdviceDetailPageState extends State<AdviceDetailPage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Diaries analyzed: ${widget.analysisItem['diaries_analyzed'] ?? 0}',
+                          'Diaries analyzed: ${analysisItem['diaries_analyzed'] ?? 0}',
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? Colors.white60 : Colors.grey[500],
@@ -301,12 +123,15 @@ class _AdviceDetailPageState extends State<AdviceDetailPage> {
             CompCard(
               isDark: isDark,
               children: [
-                CompDate(date: formattedDate, isDark: isDark),
+                CompDate(
+                  date: formattedDate, // <--- GÜNCELLENDİ
+                  isDark: isDark,
+                ),
                 const SizedBox(height: 10),
-                CompTitle(title: widget.title, isDark: isDark),
+                CompTitle(title: title, isDark: isDark),
                 const SizedBox(height: 16),
                 CompBody(
-                  text: AdviceUtils.getAdvice(widget.analysisItem),
+                  text: AdviceUtils.getAdvice(analysisItem),
                   isDark: isDark,
                 ),
               ],
@@ -338,12 +163,12 @@ class _AdviceDetailPageState extends State<AdviceDetailPage> {
                   const SizedBox(height: 12),
                   _buildDetailRow(
                     'Character Type',
-                    widget.analysisItem['character_type'] ?? 'Not specified',
+                    analysisItem['character_type'] ?? 'Not specified',
                     isDark,
                   ),
                   _buildDetailRow(
                     'Zodiac Sign',
-                    widget.analysisItem['sign'] ?? 'Not specified',
+                    analysisItem['sign'] ?? 'Not specified',
                     isDark,
                   ),
                 ],

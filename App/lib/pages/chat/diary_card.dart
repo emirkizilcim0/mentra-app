@@ -4,6 +4,9 @@ import 'chat_styles.dart';
 import 'chat_utils.dart';
 import 'package:intl/intl.dart';
 
+// Global permanent storage for app session
+final Set<String> _permanentAdviceMemory = Set();
+
 class DiaryCard extends StatelessWidget {
   final Map<String, dynamic> entry;
   final bool isDark;
@@ -18,12 +21,43 @@ class DiaryCard extends StatelessWidget {
     required this.onAdvice,
   });
 
+  // Helper to check if advice exists PERMANENTLY
+  bool _hasPermanentAdvice() {
+    String localId = entry['id']?.toString() ?? entry['_id']?.toString() ?? "";
+
+    // Check 1: Global memory (app session)
+    if (_permanentAdviceMemory.contains(localId)) {
+      return true;
+    }
+
+    // Check 2: PostgreSQL flag (from database)
+    if (entry['has_advice'] == true) {
+      _permanentAdviceMemory.add(localId); // Remember for session
+      return true;
+    }
+
+    // Check 3: Any advice/analysis data exists
+    bool hasData =
+        (entry['advice'] != null &&
+            entry['advice'].toString().trim().isNotEmpty) ||
+        (entry['analysis'] != null &&
+            entry['analysis'].toString().trim().isNotEmpty);
+
+    if (hasData) {
+      _permanentAdviceMemory.add(localId); // Remember for session
+      return true;
+    }
+
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Advice var mı kontrolü
-    bool hasAdvice =
-        (entry['advice'] != null && entry['advice'].toString().isNotEmpty) ||
-        (entry['analysis'] != null && entry['analysis'].toString().isNotEmpty);
+    String localId = entry['id']?.toString() ?? entry['_id']?.toString() ?? "";
+    bool hasAdvice = _hasPermanentAdvice();
+
+    // Debug
+    print('🎯 DiaryCard - ID: $localId, Has Advice: $hasAdvice');
 
     return Container(
       width: double.infinity,
@@ -35,7 +69,7 @@ class DiaryCard extends StatelessWidget {
         boxShadow: [getShadow(isDark)],
       ),
       child: InkWell(
-        onTap: onTap, // Kartın kendisine tıklayınca detay açılır
+        onTap: onTap,
         child: Row(
           children: [
             Expanded(
@@ -45,7 +79,6 @@ class DiaryCard extends StatelessWidget {
                   Text(
                     entry['date'] != null
                         ? DateFormat('d MMMM, yyyy').format(
-                            // Gelen veri String mi DateTime mı kontrol edip ona göre çeviriyoruz
                             entry['date'] is DateTime
                                 ? entry['date']
                                 : DateTime.parse(entry['date'].toString()),
@@ -72,15 +105,14 @@ class DiaryCard extends StatelessWidget {
               ),
             ),
 
-            // --- BURASI DEĞİŞTİ ---
-            // Eğer advice VARSA butonu göster, YOKSA gösterme.
-            // --- ADVICE BUTONU MANTIĞI ---
-
-            // DURUM 1: Eğer tavsiye daha önce alınmışsa (Veritabanında varsa)
+            // --- PERMANENT BUTTON LOGIC ---
             if (hasAdvice)
               InkWell(
-                onTap:
-                    onAdvice, // Direkt sayfayı açar (ChatPage'deki mantık sayesinde)
+                onTap: () {
+                  // Add to permanent memory for this app session
+                  _permanentAdviceMemory.add(localId);
+                  onAdvice();
+                },
                 child: Container(
                   margin: const EdgeInsets.only(left: 12),
                   padding: const EdgeInsets.symmetric(
@@ -88,24 +120,18 @@ class DiaryCard extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.deepPurple.shade300
-                        : Colors.deepPurple.shade100,
+                    color: Colors.green, // PERMANENT GREEN
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.visibility, // "Görüntüle" ikonu
-                        size: 16,
-                        color: Colors.deepPurple.shade900,
-                      ),
+                      Icon(Icons.visibility, size: 16, color: Colors.white),
                       const SizedBox(width: 6),
                       Text(
                         'See Advice',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.deepPurple.shade900,
+                          color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -113,10 +139,12 @@ class DiaryCard extends StatelessWidget {
                   ),
                 ),
               )
-            // DURUM 2: Eğer tavsiye HENÜZ ALINMAMIŞSA
             else
               InkWell(
-                onTap: onAdvice, // Analizi başlatır ve kaydeder
+                onTap: () {
+                  // Will be marked as having advice in _getAdvice function
+                  onAdvice();
+                },
                 child: Container(
                   margin: const EdgeInsets.only(left: 12),
                   padding: const EdgeInsets.symmetric(
@@ -124,25 +152,18 @@ class DiaryCard extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    // Dikkat çekmesi için Amber/Turuncu tonları
-                    color: isDark
-                        ? Colors.amber.shade700
-                        : Colors.amber.shade200,
+                    color: Colors.blue,
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.auto_awesome, // "Sihir/Yarat" ikonu
-                        size: 16,
-                        color: isDark ? Colors.white : Colors.brown.shade800,
-                      ),
+                      Icon(Icons.auto_awesome, size: 16, color: Colors.white),
                       const SizedBox(width: 6),
                       Text(
                         'Get Advice',
                         style: TextStyle(
                           fontSize: 13,
-                          color: isDark ? Colors.white : Colors.brown.shade800,
+                          color: Colors.white,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -150,7 +171,6 @@ class DiaryCard extends StatelessWidget {
                   ),
                 ),
               ),
-            // Advice yoksa hiçbir şey koymuyoruz (SizedBox yok)
           ],
         ),
       ),
