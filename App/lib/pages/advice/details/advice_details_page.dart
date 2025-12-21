@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:mentra_app/services/dairy/dairy_service.dart'; // ADD THIS IMPORT
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'advice_colors.dart';
 import 'advice_utils.dart';
 import 'comp_card.dart';
@@ -29,6 +32,25 @@ class AdviceDetailPage extends StatefulWidget {
 
 class _AdviceDetailPageState extends State<AdviceDetailPage> {
   bool _hasSaved = false;
+
+  Future<String> _getUserId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Check for user_id in different possible keys
+      final userId =
+          prefs.getString('user_id') ??
+          prefs.getString('uid') ??
+          prefs.getString('userId') ??
+          'unknown_user';
+
+      print('🔑 Retrieved user_id from SharedPreferences: $userId');
+      return userId;
+    } catch (e) {
+      print('❌ Error getting user_id from SharedPreferences: $e');
+      return 'unknown_user';
+    }
+  }
 
   @override
   void initState() {
@@ -100,21 +122,77 @@ class _AdviceDetailPageState extends State<AdviceDetailPage> {
   }
 
   Future<void> _saveAnalysisToBackend(Map<String, dynamic> analysisData) async {
-    // This is a placeholder - you need to implement based on your backend
-    // Option 1: If you have a save analysis endpoint
-    // await DiaryService.saveAnalysis(analysisData);
+    try {
+      // IMPORTANT: You need to implement this method in DiaryService first!
+      // This sends the analysis to your backend to save in PostgreSQL
 
-    // Option 2: Save to Firebase directly
-    // await FirebaseFirestore.instance.collection('analyses').add(analysisData);
+      print('📤 Attempting to save analysis to backend...');
+      print('📋 Analysis data: $analysisData');
 
-    // Option 3: Save to local storage
-    // final prefs = await SharedPreferences.getInstance();
-    // final history = prefs.getStringList('analysis_history') ?? [];
-    // history.add(json.encode(analysisData));
-    // await prefs.setStringList('analysis_history', history);
+      // Option 1: Call your existing save endpoint (if it exists)
+      // You need to create this method in DiaryService first!
+      // await DiaryService.saveAnalysis(analysisData);
 
-    // For now, we'll just print
-    print('Analysis data ready for saving: $analysisData');
+      // Option 2: Save directly via HTTP (immediate fix)
+      await _saveViaHttp(analysisData);
+    } catch (e) {
+      print('❌ Error in _saveAnalysisToBackend: $e');
+      // Fallback: Save to local storage as temporary backup
+      await _saveToLocalStorage(analysisData);
+    }
+  }
+
+  // Direct HTTP save method
+  Future<void> _saveViaHttp(Map<String, dynamic> analysisData) async {
+    try {
+      // Get your backend URL and user ID
+      final baseUrl = 'https://mentra-app.onrender.com'; // UPDATE THIS
+      final userId = await _getUserId(); // Get from SharedPreferences
+
+      // Create the request
+      final response = await http.post(
+        Uri.parse('$baseUrl/analyses/save'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'user_id': userId,
+          'character_type': analysisData['character_type'],
+          'sign': analysisData['sign'],
+          'birth_map': analysisData['birth_map'],
+          'advice': analysisData['advice'],
+          'mood': analysisData['mood'],
+          'analysis_date': analysisData['analysis_date'],
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Analysis saved via HTTP to PostgreSQL');
+      } else {
+        print('❌ HTTP save failed: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('❌ HTTP save error: $e');
+      rethrow;
+    }
+  }
+
+  // Fallback local storage
+  Future<void> _saveToLocalStorage(Map<String, dynamic> analysisData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<String> history = prefs.getStringList('local_analyses') ?? [];
+
+      history.add(
+        json.encode({
+          ...analysisData,
+          'saved_locally_at': DateTime.now().toString(),
+        }),
+      );
+
+      await prefs.setStringList('local_analyses', history);
+      print('✅ Analysis saved to local storage as backup');
+    } catch (e) {
+      print('❌ Local storage save error: $e');
+    }
   }
 
   String _formatDateUS(Map<String, dynamic> item) {

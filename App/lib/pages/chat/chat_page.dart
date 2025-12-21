@@ -3,16 +3,17 @@ import 'package:mentra_app/pages/dairy/write/dairy_write_page.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:mentra_app/services/dairy/dairy_service.dart';
 import 'package:provider/provider.dart';
-// Detay sayfasını import et
 import 'package:mentra_app/pages/advice/details/advice_details_page.dart';
 import 'advice_utils.dart';
 import 'package:intl/intl.dart';
 import '../home/loading_view.dart';
 import 'logic_data.dart';
 import 'logic_nav.dart';
-import 'advice_page.dart';
 import 'chat_view.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http; // ADD THIS
+import 'dart:convert'; // ADD THIS
+import 'package:shared_preferences/shared_preferences.dart'; // ADD THIS
 
 class ChatPage extends StatefulWidget {
   final DateTime? selectedDate;
@@ -55,10 +56,108 @@ class _ChatPageState extends State<ChatPage> {
       } else {
         date = DateTime.parse(dateStr.toString());
       }
-      // US Formatı: "November 27, 2025" (Detay sayfasındaki ile uyumlu olsun)
       return DateFormat('d MMMM, yyyy', 'en_US').format(date.toLocal());
     } catch (_) {
       return dateStr.toString();
+    }
+  }
+
+  // --- GET USER ID FOR POSTGRESQL ---
+  Future<String> _getUserId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId =
+          prefs.getString('user_id') ??
+          prefs.getString('uid') ??
+          prefs.getString('userId') ??
+          'unknown_user';
+      print('🔑 User ID for PostgreSQL: $userId');
+      return userId;
+    } catch (e) {
+      print('❌ Error getting user_id: $e');
+      return 'unknown_user';
+    }
+  }
+
+  // --- SAVE TO POSTGRESQL ---
+  Future<void> _saveToPostgreSQL(
+    Map<String, dynamic> analysisData,
+    String? diaryId,
+    Map<String, dynamic>? entry,
+  ) async {
+    try {
+      final userId = await _getUserId();
+      final baseUrl = 'https://mentra-app.onrender.com'; // Your Render URL
+
+      // Prepare data for PostgreSQL
+      final Map<String, dynamic> postgresData = {
+        'user_id': userId,
+        'character_type': type,
+        'sign': sign,
+        'birth_map': 'Not specified',
+        'advice': analysisData['advice'] ?? '',
+        'mood': analysisData['mood'] ?? 'Calm',
+        'analysis_date': DateTime.now().toIso8601String(),
+        'diary_id': diaryId, // Optional: link to original diary
+      };
+
+      print('📤 Saving to PostgreSQL: $postgresData');
+
+      // Option 1: Use your existing /analyze/diaries endpoint
+      final response = await http.post(
+        Uri.parse('$baseUrl/analyze/diaries'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'user_id': userId,
+          'character_type': type,
+          'sign': sign,
+          'birth_map': 'Not specified',
+          'diary_count': 1,
+          'specific_content': entry != null
+              ? (entry['content'] ?? entry['text'] ?? "")
+              : null,
+          'specific_ids': diaryId != null ? [diaryId] : null,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅✅✅ POSTGRESQL ANALYSIS SAVED VIA /analyze/diaries ✅✅✅');
+
+        // Also save via the new /analyses/save endpoint if available
+        await _saveViaAnalysesSaveEndpoint(postgresData);
+      } else {
+        print('⚠️ /analyze/diaries save failed: ${response.statusCode}');
+        // Try direct save
+        await _saveViaAnalysesSaveEndpoint(postgresData);
+      }
+    } catch (e) {
+      print('❌ PostgreSQL save error: $e');
+    }
+  }
+
+  // --- SAVE VIA /analyses/save ENDPOINT ---
+  Future<void> _saveViaAnalysesSaveEndpoint(Map<String, dynamic> data) async {
+    try {
+      final baseUrl = 'https://mentra-app.onrender.com';
+      final response = await http.post(
+        Uri.parse('$baseUrl/analyses/save'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(data),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅✅✅ DIRECT POSTGRESQL SAVE SUCCESS ✅✅✅');
+        final result = json.decode(response.body);
+        print('📊 Save result: $result');
+      } else if (response.statusCode == 404) {
+        print('⚠️ /analyses/save endpoint not found (add it to your backend)');
+      } else {
+        print(
+          '⚠️ /analyses/save failed: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e) {
+      print('❌ /analyses/save error: $e');
     }
   }
 
@@ -72,34 +171,28 @@ class _ChatPageState extends State<ChatPage> {
       final items = await LogicData.loadDiaries();
 
       // 2. Firebase'den Analizleri Çek
-      // 'analyses' tablosu yoksa bile hata vermez, boş döner.
       final QuerySnapshot analysisSnapshot = await FirebaseFirestore.instance
           .collection('analyses')
           .get();
 
-      // Gelen veriyi listeye çevir
       final List<Map<String, dynamic>> analysesList = analysisSnapshot.docs
           .map((doc) => doc.data() as Map<String, dynamic>)
           .toList();
 
       // 3. Eşleştirme Yap (Günlük ID == Analiz Diary ID)
       for (var item in items) {
-        // Tarihi düzelt
         if (item['date'] != null) {
           item['formattedDate'] = _formatDate(item['date']);
         }
 
-        // Günlüğün ID'sini al (String'e çevirerek garantiye alıyoruz)
         String localId =
             item['id']?.toString() ?? item['_id']?.toString() ?? "";
 
-        // Listede bu ID'ye sahip analiz var mı?
         final matchingAnalysis = analysesList.firstWhere(
           (analysis) => analysis['diary_id'].toString() == localId,
           orElse: () => {},
         );
 
-        // Varsa, günlüğe ekle (Böylece buton görünecek!)
         if (matchingAnalysis.isNotEmpty) {
           item['advice'] = matchingAnalysis['advice'];
           item['analysis'] = matchingAnalysis['analysis'];
@@ -112,9 +205,7 @@ class _ChatPageState extends State<ChatPage> {
         loading = false;
       });
 
-      // (Otomatik açılma kodları buraya gelebilir, aynı kalacak)
       if (mounted && widget.selectedDate != null && widget.showAdvice) {
-        // ... eski mantık ...
         String y = widget.selectedDate!.year.toString();
         String m = widget.selectedDate!.month.toString().padLeft(2, '0');
         String d = widget.selectedDate!.day.toString().padLeft(2, '0');
@@ -164,7 +255,7 @@ class _ChatPageState extends State<ChatPage> {
             builder: (context) => AdviceDetailPage(
               analysisItem: entry,
               title: "Daily Advice",
-              shouldSaveToHistory: false, // Already saved
+              shouldSaveToHistory: false,
             ),
           ),
         );
@@ -189,7 +280,7 @@ class _ChatPageState extends State<ChatPage> {
           characterType: type,
           sign: sign,
           birthMap: 'Not specified',
-          diaryCount: 1, // CRITICAL: Always 1, not 0!
+          diaryCount: 1,
           specificContent: entry != null
               ? (entry['content'] ?? entry['text'] ?? "")
               : null,
@@ -205,6 +296,7 @@ class _ChatPageState extends State<ChatPage> {
           print("📢 6. DURUM: Firebase'e yazma işlemi başlıyor...");
 
           try {
+            // 1. Save to Firebase
             await FirebaseFirestore.instance.collection('analyses').add({
               'diary_id': currentId,
               'advice': finalData['advice'],
@@ -213,6 +305,9 @@ class _ChatPageState extends State<ChatPage> {
               'created_at': FieldValue.serverTimestamp(),
             });
             print("✅✅✅ 7. BAŞARI: FIREBASE'E KAYDEDİLDİ! ✅✅✅");
+
+            // 2. ALSO SAVE TO POSTGRESQL (CRITICAL FOR AdvicePage!)
+            await _saveToPostgreSQL(finalData, currentId, entry);
           } catch (firebaseError) {
             print("❌❌❌ FIREBASE HATASI: $firebaseError ❌❌❌");
           }
@@ -244,7 +339,7 @@ class _ChatPageState extends State<ChatPage> {
               builder: (context) => AdviceDetailPage(
                 analysisItem: finalData!,
                 title: "Analysis Result",
-                shouldSaveToHistory: true, // ADD THIS - CRITICAL!
+                shouldSaveToHistory: true,
               ),
             ),
           );
@@ -265,20 +360,14 @@ class _ChatPageState extends State<ChatPage> {
 
   // ChatPage.dart içindeki _write fonksiyonu
   Future<void> _write() async {
-    // 1. Yazma sayfasına git
     final res = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const DiaryWritePage()),
     );
 
     if (res != null) {
-      // 2. Veritabanına kaydet
       await DiaryService.saveDiaryEntry(res);
-
-      // 3. LİSTEYİ YENİLE (Burası çalışınca buton otomatik listede çıkacak)
       await _loadDiaries();
-
-      // 4. Sadece "Kaydedildi" yazısı göster (Buton yok)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -300,7 +389,6 @@ class _ChatPageState extends State<ChatPage> {
           backgroundColor: isDark
               ? const Color(0xFF121212)
               : const Color(0xFFE8F4F9),
-          // ChatViewBody'ye fonksiyonları gönderiyoruz
           body: ChatViewBody(
             isDark: isDark,
             isLoading: loading,
@@ -309,7 +397,7 @@ class _ChatPageState extends State<ChatPage> {
             onRefresh: _loadDiaries,
             onWrite: _write,
             onDetail: (e) => LogicNav.openDiaryDetail(context, e),
-            onAdvice: _getAdvice, // DiaryCard içindeki buton burayı tetikler
+            onAdvice: _getAdvice,
           ),
         ),
         if (_isAnalyzing) Positioned.fill(child: LoadingView(isDark: isDark)),

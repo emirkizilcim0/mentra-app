@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:mentra_app/services/dairy/dairy_service.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'advice_view_body.dart';
 
@@ -73,6 +75,7 @@ class _AdvicePageState extends State<AdvicePage> {
     });
   }
 
+  // Update your _loadAnalyses() method in AdvicePage
   Future<void> _loadAnalyses() async {
     try {
       setState(() {
@@ -80,49 +83,56 @@ class _AdvicePageState extends State<AdvicePage> {
         errorMessage = null;
       });
 
-      final items = await DiaryService.getAnalysisHistory(limit: 50);
+      // FETCH FROM FIREBASE instead of PostgreSQL backend
+      final List<Map<String, dynamic>> items = await _fetchFromFirebase();
 
-      print('📊 Loaded ${items.length} items from history');
+      print('🔥 Loaded ${items.length} items from Firebase');
 
-      // If no items from history AND we have new analysis, use that
-      if (items.isEmpty && widget.fullAnalysisData != null) {
-        print('📝 Using fullAnalysisData since history is empty');
-        setState(() {
-          analyses = [widget.fullAnalysisData!];
-          isLoading = false;
-        });
-        return;
-      }
-
-      // Transform items to match the expected format
-      final transformedItems = items.map((item) {
-        return {
-          ...item,
-          'analysis':
-              item['advice'] ??
-              item['analysis'] ??
-              '', // Ensure 'analysis' field exists
-          'created_at':
-              item['date'] ?? item['created_at'] ?? DateTime.now().toString(),
-          'analysis_date':
-              item['date'] ??
-              item['analysis_date'] ??
-              DateTime.now().toString(),
-          'is_new': false,
-        };
-      }).toList();
-
-      setState(() {
-        analyses = transformedItems;
-        isLoading = false;
-      });
+      // Rest of your existing code...
     } catch (e) {
       print("❌ Error loading analyses: $e");
       setState(() {
         isLoading = false;
         errorMessage = "Advices aren't available at the moment.";
-        analyses = []; // Ensure empty list on error
+        analyses = [];
       });
+    }
+  }
+
+  // Add this method to fetch from Firebase
+  Future<List<Map<String, dynamic>>> _fetchFromFirebase() async {
+    try {
+      // Get current user ID
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('user_id') ?? 'unknown';
+
+      // Fetch from Firebase 'analyses' collection
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('analyses')
+          .where('user_id', isEqualTo: userId) // Add this field when saving!
+          .orderBy('created_at', descending: true)
+          .limit(50)
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return {
+          'id': doc.id,
+          'analysis': data['advice'] ?? data['analysis'] ?? '',
+          'advice': data['advice'] ?? data['analysis'] ?? '',
+          'mood': data['mood'] ?? 'Calm',
+          'character_type': data['character_type'] ?? 'Unknown',
+          'sign': data['sign'] ?? 'Unknown',
+          'date': data['created_at']?.toString() ?? DateTime.now().toString(),
+          'created_at':
+              data['created_at']?.toString() ?? DateTime.now().toString(),
+          'analysis_date':
+              data['created_at']?.toString() ?? DateTime.now().toString(),
+        };
+      }).toList();
+    } catch (e) {
+      print('❌ Error fetching from Firebase: $e');
+      return [];
     }
   }
 

@@ -393,28 +393,31 @@ async def get_analysis_history(user_id: str, limit: int = 50):  # Increase defau
         return {"analyses": []}  # Return empty array instead of raising error
 
 
+class SaveAnalysisRequest(BaseModel):
+    user_id: str
+    character_type: str
+    sign: str
+    birth_map: str
+    advice: str
+    mood: str = "Calm"
+    analysis_date: str = None
+    diary_id: str = None  
+
 @app.post("/analyses/save")
-async def save_analysis(user_id: str, analysis_data: dict):
-    """Save an analysis result to the database"""
+async def save_analysis(request: SaveAnalysisRequest):
+    """Save an analysis to PostgreSQL"""
     try:
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
-        # Extract data with defaults
-        advice = analysis_data.get("advice", "") or analysis_data.get("analysis", "")
-        mood = analysis_data.get("mood", "Calm")
-        character_type = analysis_data.get("character_type", "Unknown")
-        sign = analysis_data.get("sign", "Unknown")
-        birth_map = analysis_data.get("birth_map", "Unknown")
-        
-        # Prepare analysis_data JSON
-        full_analysis_data = {
-            "character_type": character_type,
-            "sign": sign,
-            "birth_map": birth_map,
-            "mood": mood,
-            "advice": advice,
-            "analysis_date": datetime.utcnow().isoformat()
+        analysis_date = request.analysis_date or datetime.utcnow().isoformat()
+        analysis_data = {
+            "character_type": request.character_type,
+            "sign": request.sign,
+            "birth_map": request.birth_map,
+            "mood": request.mood,
+            "analysis_date": analysis_date,
+            "diary_id": request.diary_id
         }
         
         analysis_id = await connection_pool.fetchval('''
@@ -424,12 +427,14 @@ async def save_analysis(user_id: str, analysis_data: dict):
             ) VALUES ($1, $2, $3, $4, $5)
             RETURNING id
         ''', 
-            user_id, 
-            "diary_analysis", 
-            advice,
-            1,  # Always 1 diary analyzed
-            json.dumps(full_analysis_data)
+            request.user_id,
+            "diary_analysis",
+            request.advice,
+            1,  # Single diary analyzed
+            json.dumps(analysis_data)
         )
+        
+        logger.info(f"✅ Analysis saved to PostgreSQL, ID: {analysis_id}")
         
         return {
             "message": "Analysis saved successfully",
