@@ -153,7 +153,10 @@ class DiaryAnalysisRequest(BaseModel):
     character_type: str
     sign: str
     birth_map: str
-    diary_count: Optional[int] = 10  # Number of recent diaries to analyze
+    diary_count: Optional[int] = 10
+    specific_content: Optional[str] = None  
+    specific_ids: Optional[List[int]] = None  
+    diaries: Optional[List[str]] = None  
 
 class AnalysisResponse(BaseModel):
     advice: str
@@ -231,24 +234,48 @@ async def get_user_diaries(user_id: str, limit: int = 20):
 async def analyze_diaries(request: DiaryAnalysisRequest):
     """Analyze user diaries and provide psychological advice"""
     try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
+        diary_contents = []
         
-        # Get recent diaries for the user
-        diaries = await connection_pool.fetch('''
-            SELECT content, mood, tags, created_at
-            FROM user_diaries 
-            WHERE user_id = $1 
-            ORDER BY created_at DESC 
-            LIMIT $2
-        ''', request.user_id, request.diary_count)
+        # LOG what we receive
+        logger.info(f"Received analysis request. Specific content: {request.specific_content is not None}")
+        logger.info(f"Direct diaries sent: {request.diaries is not None and len(request.diaries) > 0}")
         
-        # Prepare diary contents for analysis
-        diary_contents = [diary["content"] for diary in diaries]
+        # OPTION 1: If specific content is provided directly
+        if request.specific_content:
+            logger.info(f"Using specific content: {request.specific_content[:100]}...")
+            diary_contents = [request.specific_content]
         
-        # Get psychological advice (this will handle empty diaries gracefully)
+        # OPTION 2: If diaries are provided directly in the request
+        elif request.diaries and len(request.diaries) > 0:
+            logger.info(f"Using direct diaries: {len(request.diaries)} entries")
+            diary_contents = request.diaries
+        
+        # OPTION 3: If specific IDs are provided, fetch those
+        elif request.specific_ids and connection_pool:
+            logger.info(f"Fetching specific IDs: {request.specific_ids}")
+            diaries = await connection_pool.fetch('''
+                SELECT content FROM user_diaries 
+                WHERE id = ANY($1) AND user_id = $2
+                ORDER BY created_at DESC
+            ''', request.specific_ids, request.user_id)
+            diary_contents = [diary["content"] for diary in diaries]
+        
+        # OPTION 4: Default - get recent diaries from database
+        elif connection_pool:
+            logger.info(f"Fetching recent diaries, count: {request.diary_count}")
+            diaries = await connection_pool.fetch('''
+                SELECT content, mood, tags, created_at
+                FROM user_diaries 
+                WHERE user_id = $1 
+                ORDER BY created_at DESC 
+                LIMIT $2
+            ''', request.user_id, request.diary_count)
+            diary_contents = [diary["content"] for diary in diaries]
+        
+        logger.info(f"Total diary contents for analysis: {len(diary_contents)}")
+        
+        # Get psychological advice
         advisor = get_psychologist()
-
         analysis_result = advisor.analyze_diaries(
             diaries=diary_contents,
             character_type=request.character_type,
@@ -256,38 +283,46 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             birth_map=request.birth_map
         )
 
-        if analysis_result["status"] == "error":
-            # Even if there's an error, we return the fallback advice
-            logger.error(f"Analysis error: {analysis_result.get('error')}")
+        # FIX: Ensure mood is always present
+        mood = analysis_result.get("mood")
+        if not mood:
+            # Extract from advice or use default
+            advice_text = analysis_result.get("advice", "").lower()
+            if any(word in advice_text for word in ["anxious", "anxiety", "stress"]):
+                mood = "Anxious"
+            elif any(word in advice_text for word in ["happy", "joy", "excited"]):
+                mood = "Happy"
+            elif any(word in advice_text for word in ["sad", "depressed", "unhappy"]):
+                mood = "Sad"
+            else:
+                mood = "Calm"
         
-        # Save the mood in analysis_data - use json.dumps
-        analysis_data = json.dumps({
-            "character_type": request.character_type,
-            "sign": request.sign,
-            "birth_map": request.birth_map,
-            "mood": analysis_result.get("mood", "Calm")
-        })
+        # Save analysis if we have diaries
+        if diary_contents and connection_pool:
+            analysis_data = json.dumps({
+                "character_type": request.character_type,
+                "sign": request.sign,
+                "birth_map": request.birth_map,
+                "mood": mood
+            })
+            
+            analysis_id = await connection_pool.fetchval('''
+                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+            ''', request.user_id, "diary_analysis", analysis_result["advice"], 
+                 len(diary_contents), analysis_data)
         
-        # Save the analysis result
-        analysis_id = await connection_pool.fetchval('''
-            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id
-        ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-             len(diaries), analysis_data)
-        
-        # Also return the mood in the response
         return {
             "advice": analysis_result["advice"],
-            "mood": analysis_result.get("mood", "Calm"),
+            "mood": mood,
             "status": "success",
-            "analysis_date": analysis_result["analysis_date"],
-            "diaries_analyzed": analysis_result["diaries_analyzed"]
+            "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat()),
+            "diaries_analyzed": analysis_result.get("diaries_analyzed", len(diary_contents))
         }
         
     except Exception as e:
-        logger.error(f"Error analyzing diaries: {e}")
-        # Provide a basic fallback response
+        logger.error(f"Error analyzing diaries: {e}", exc_info=True)
         return {
             "advice": "I'm here to help you with psychological insights! Start by writing your first diary entry to get personalized advice.",
             "mood": "Calm",
@@ -295,6 +330,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             "analysis_date": datetime.utcnow().isoformat(),
             "diaries_analyzed": 0
         }
+    
     
 @app.get("/analysis/history/{user_id}")
 async def get_analysis_history(user_id: str, limit: int = 10):

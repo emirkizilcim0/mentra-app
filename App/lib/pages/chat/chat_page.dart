@@ -186,11 +186,12 @@ class _ChatPageState extends State<ChatPage> {
           characterType: type,
           sign: sign,
           birthMap: 'Not specified',
-          diaryCount: entry == null ? 1 : 0,
+          diaryCount: 1, // CRITICAL: Always 1, not 0!
           specificContent: entry != null
               ? (entry['content'] ?? entry['text'] ?? "")
               : null,
           specificIds: currentId != null ? [currentId] : null,
+          userDiaries: entry != null ? [entry] : null,
         );
         print("📢 5. DURUM: AI cevabı geldi.");
 

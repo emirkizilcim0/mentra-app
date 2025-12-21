@@ -139,13 +139,16 @@ class DiaryPsychologistAdvisor:
             - Keep it positive, supportive, and around 150-200 words
             """
             
-            # FIX: Use self.client.models.generate_content() instead of self.model.generate_content()
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt
             )
             
+            # EXTRACT MOOD from response
+            mood = self._extract_mood_from_response(response.text)
+            
             return {
+                "mood": mood,  # ADD THIS
                 "advice": response.text,
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
@@ -155,11 +158,13 @@ class DiaryPsychologistAdvisor:
         except Exception as e:
             logger.error(f"Error providing general advice: {e}")
             return {
+                "mood": "Calm",  # ADD THIS
                 "advice": self._get_fallback_advice(character_type, sign),
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
-                "status": "success"  # Changed from "error" to avoid confusing the frontend
+                "status": "success"
             }
+        
     def _get_fallback_advice(self, character_type: str, sign: str) -> str:
         """Provide fallback advice when AI service is unavailable"""
         return f"""
