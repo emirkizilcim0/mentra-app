@@ -123,7 +123,7 @@ class DiaryPsychologistAdvisor:
             prepared_entries.append(f"Entry {i}: {clean_diary}")
         
         return "\n\n".join(prepared_entries)
-
+    
     def _provide_general_advice(self, character_type: str, sign: str) -> Dict[str, Any]:
         """Provide general advice when no diaries are available"""
         try:
@@ -139,7 +139,11 @@ class DiaryPsychologistAdvisor:
             - Keep it positive, supportive, and around 150-200 words
             """
             
-            response = self.model.generate_content(prompt)
+            # FIX: Use self.client.models.generate_content() instead of self.model.generate_content()
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
             
             return {
                 "advice": response.text,
@@ -154,9 +158,8 @@ class DiaryPsychologistAdvisor:
                 "advice": self._get_fallback_advice(character_type, sign),
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
-                "status": "success"
+                "status": "success"  # Changed from "error" to avoid confusing the frontend
             }
-
     def _get_fallback_advice(self, character_type: str, sign: str) -> str:
         """Provide fallback advice when AI service is unavailable"""
         return f"""

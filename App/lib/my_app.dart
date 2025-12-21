@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
             themeMode: themeProvider.isDarkMode
                 ? ThemeMode.dark
                 : ThemeMode.light,
-            initialRoute: '/chatPage',
+            initialRoute: '/login',
             routes: AppRoutes.routes,
           );
         },
