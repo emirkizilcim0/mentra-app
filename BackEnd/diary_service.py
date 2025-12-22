@@ -23,16 +23,8 @@ class DiaryPsychologistAdvisor:
         You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
 
         Analyze the user's diary entries and do TWO things:
-        1) Classify the user's overall emotional mood
-        2) Provide psychological advice
-
-        ### MOOD LABELS (choose ONE only):
-        Happy
-        Sad
-        Anxious
-        Angry
-        Calm
-        Confused
+        1) FIRST, classify the user's overall emotional mood (choose ONLY ONE from: Happy, Sad, Anxious, Angry, Calm, Confused)
+        2) THEN, provide comprehensive psychological advice
 
         USER PROFILE:
         - MBTI Personality: {character_type}
@@ -41,17 +33,29 @@ class DiaryPsychologistAdvisor:
         USER'S DIARY ENTRIES:
         {diary_text}
 
-        Please provide a comprehensive analysis and advice focusing on:
+        **YOUR RESPONSE MUST START WITH THE MOOD LABEL ON ITS OWN LINE:**
+        [Mood: Your chosen mood label]
 
-        1. **Emotional Patterns**: Identify recurring emotions, concerns, and mental states from the diaries
-        2. **Strengths & Challenges**: Connect diary content with their personality traits
-        3. **Practical Recommendations**: Suggest specific activities, coping strategies, or mindset shifts
-        4. **Motivational Guidance**: Offer encouraging words and perspective
-        5. **Growth Opportunities**: Areas for personal development based on diary patterns
+        **THEN PROVIDE ADVICE WITH THESE EXACT SECTIONS:**
+
+        **Emotional Patterns:**
+        [Analyze recurring emotions, concerns, and mental states from the diaries]
+
+        **Strengths & Challenges:**
+        [Connect diary content with their personality traits]
+
+        **Practical Recommendations:**
+        [Suggest specific activities, coping strategies, or mindset shifts]
+
+        **Motivational Guidance:**
+        [Offer encouraging words and perspective]
+
+        **Growth Opportunities:**
+        [Areas for personal development based on diary patterns]
 
         Write in a warm, empathetic tone. Use the same language as the diary entries.
-        Structure your response with clear sections but maintain a natural, conversational flow.
         Keep your response between 300-400 words.
+        Follow this structure exactly.
         """
 
     def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str = None) -> Dict[str, Any]:
@@ -69,18 +73,28 @@ class DiaryPsychologistAdvisor:
                     sign=sign
                 )
 
-                # Generate content using the new SDK
+                # Generate content using the new SDK with system instruction
                 response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=prompt
+                    contents=prompt,
+                    config={
+                        "system_instruction": "You are a compassionate psychologist and life coach. You MUST follow the response structure exactly as specified in the prompt.",
+                        "temperature": 0.7,
+                        "top_p": 0.9
+                    }
                 )
 
                 # Extract mood from the response
                 mood = self._extract_mood_from_response(response.text)
+                
+                # If response doesn't follow structure, enforce it
+                advice_text = response.text
+                if not advice_text.strip().startswith("[Mood:"):
+                    advice_text = self._enforce_response_structure(advice_text, mood, character_type, sign)
 
                 return {
                     "mood": mood,
-                    "advice": response.text,
+                    "advice": advice_text,
                     "analysis_date": datetime.utcnow().isoformat(),
                     "diaries_analyzed": len(diaries),
                     "model_used": self.model_name,
@@ -101,13 +115,63 @@ class DiaryPsychologistAdvisor:
         """Extract mood label from the AI response"""
         # Mood labels to look for
         mood_labels = ["Happy", "Sad", "Anxious", "Angry", "Calm", "Confused"]
-        # Check for each mood label in the response
+        
+        # First check for structured mood label
+        lines = response_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith("[Mood:"):
+                for mood in mood_labels:
+                    if mood.lower() in line.lower():
+                        return mood
+        
+        # Fallback: Check for each mood label in the response
         response_lower = response_text.lower()
         for mood in mood_labels:
             if mood.lower() in response_lower:
                 return mood
+        
         # Default to "Calm" if no mood found
         return "Calm"
+    
+    def _enforce_response_structure(self, response_text: str, mood: str, character_type: str, sign: str) -> str:
+        """Enforce the response structure if AI doesn't follow it"""
+        structured_response = f"[Mood: {mood}]\n\n"
+        
+        # Check if response already has sections
+        sections = [
+            "**Emotional Patterns:**",
+            "**Strengths & Challenges:**",
+            "**Practical Recommendations:**",
+            "**Motivational Guidance:**",
+            "**Growth Opportunities:**"
+        ]
+        
+        has_sections = any(section in response_text for section in sections)
+        
+        if has_sections:
+            # If it has some structure, use it as is
+            structured_response += response_text
+        else:
+            # If completely unstructured, create a structured version
+            structured_response += f"""**Emotional Patterns:**
+Based on your diary entries, I notice {mood.lower()} emotions are prominent. Your entries reveal...
+
+**Strengths & Challenges:**
+As a {character_type}, you bring specific strengths to these situations. Your {sign} nature suggests...
+
+**Practical Recommendations:**
+1. Try journaling about...
+2. Consider implementing...
+3. Practice...
+
+**Motivational Guidance:**
+Remember that every emotion serves a purpose. Your journey of self-discovery is valuable and shows great courage.
+
+**Growth Opportunities:**
+This experience provides an opportunity to develop deeper emotional awareness and resilience."""
+        
+        return structured_response
     
     def _prepare_diary_text(self, diaries: List[str]) -> str:
         """Prepare diary text for analysis, limiting total length"""
@@ -137,15 +201,17 @@ class DiaryPsychologistAdvisor:
             - General insights about their {character_type} personality type
             - Motivational guidance for self-reflection
             - Keep it positive, supportive, and around 150-200 words
+            
+            **Start your response with:** [Mood: Calm]
             """
             
-            # FIX: Use self.client.models.generate_content() instead of self.model.generate_content()
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=prompt
             )
             
             return {
+                "mood": "Calm",
                 "advice": response.text,
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
@@ -155,27 +221,32 @@ class DiaryPsychologistAdvisor:
         except Exception as e:
             logger.error(f"Error providing general advice: {e}")
             return {
+                "mood": "Calm",
                 "advice": self._get_fallback_advice(character_type, sign),
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
-                "status": "success"  # Changed from "error" to avoid confusing the frontend
+                "status": "success"
             }
+    
     def _get_fallback_advice(self, character_type: str, sign: str) -> str:
         """Provide fallback advice when AI service is unavailable"""
-        return f"""
-        I'm here to support your emotional well-being journey!
+        return f"""[Mood: Calm]
 
-        Based on your {character_type} personality type and {sign} zodiac sign, journaling can be a powerful tool for self-discovery. 
+**Emotional Patterns:**
+Starting a journaling practice is the first step toward greater emotional awareness.
 
-        As a {character_type}, you likely have rich inner thoughts that deserve expression. Writing them down can provide clarity and help you understand your emotional patterns better. Your {sign} nature suggests you may benefit from regular emotional check-ins.
+**Strengths & Challenges:**
+As a {character_type}, you likely have rich inner thoughts that deserve expression. Your {sign} nature suggests you may benefit from regular emotional check-ins.
 
-        Start by writing about:
-        - Your current feelings and experiences
-        - Things you're grateful for today
-        - Challenges you're facing and how you're handling them
-        - Goals and aspirations that motivate you
+**Practical Recommendations:**
+Start by writing about:
+- Your current feelings and experiences
+- Things you're grateful for today
+- Challenges you're facing and how you're handling them
+- Goals and aspirations that motivate you
 
-        Regular reflection can help you develop greater self-awareness and emotional intelligence. I'm looking forward to reading your thoughts and providing personalized insights!
+**Motivational Guidance:**
+I'm here to support your emotional well-being journey! Journaling can be a powerful tool for self-discovery.
 
-        Remember, this is your safe space for honest self-expression. There's no right or wrong way to journal - just be yourself.
-        """
+**Growth Opportunities:**
+Regular reflection can help you develop greater self-awareness and emotional intelligence. This is your safe space for honest self-expression."""
