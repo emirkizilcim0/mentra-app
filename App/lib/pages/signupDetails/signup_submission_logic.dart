@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mentra_app/services/auth/auth_service.dart';
+import 'package:mentra_app/pages/profile/profile_helpers.dart';
 
 // ZodiacCalculator importuna artık gerek kalmadı çünkü AuthService hallediyor
 // ama kodunda hata vermesin diye durabilir veya silebilirsin.
@@ -49,6 +50,37 @@ class SignupSubmissionLogic {
       return true;
     } catch (e) {
       print("Error: $e");
+      return false;
+    }
+  }
+
+  static Future<bool> saveGoogleDetails(
+    String first,
+    String last,
+    DateTime bd,
+  ) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return false;
+
+      final zodiac = getZodiac(bd);
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+        {
+          'firstName': first,
+          'lastName': last,
+          'birthDate': bd.toIso8601String(),
+          'email': user.email ?? '',
+          'sign': zodiac,
+          'zodiac': zodiac,
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      return true;
+    } catch (e) {
+      print("Error (Google details save): $e");
       return false;
     }
   }

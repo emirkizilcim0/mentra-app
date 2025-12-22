@@ -14,11 +14,13 @@ import 'package:mentra_app/pages/signupDetails/text_input_field.dart';
 class SignupDetailsPage extends StatefulWidget {
   final String email;
   final String password;
+  final bool isGoogle;
 
   const SignupDetailsPage({
     super.key,
     required this.email,
     required this.password,
+    this.isGoogle = false,
   });
 
   @override
@@ -44,14 +46,22 @@ class _SignupDetailsPageState extends State<SignupDetailsPage> {
 
     setState(() => _isLoading = true);
 
-    // 2. Logic Dosyasına Çağrı (Firebase Kaydı)
-    final success = await SignupSubmissionLogic.signUpAndSaveData(
-      widget.email,
-      widget.password,
-      _firstCtrl.text.trim(),
-      _lastCtrl.text.trim(),
-      _birthDate!,
-    );
+    bool success = false;
+    if (widget.isGoogle) {
+      success = await SignupSubmissionLogic.saveGoogleDetails(
+        _firstCtrl.text.trim(),
+        _lastCtrl.text.trim(),
+        _birthDate!,
+      );
+    } else {
+      success = await SignupSubmissionLogic.signUpAndSaveData(
+        widget.email,
+        widget.password,
+        _firstCtrl.text.trim(),
+        _lastCtrl.text.trim(),
+        _birthDate!,
+      );
+    }
 
     if (mounted) setState(() => _isLoading = false);
 
