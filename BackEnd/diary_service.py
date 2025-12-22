@@ -14,7 +14,6 @@ class DiaryPsychologistAdvisor:
             api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
-            
             raise ValueError("Gemini API key is required")
 
         self.client = genai.Client(api_key=api_key)
@@ -23,9 +22,11 @@ class DiaryPsychologistAdvisor:
         self.advice_prompt = """
         You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
 
-        Analyze the user's diary entries and do TWO things:
-        1) FIRST, classify the user's overall emotional mood (choose ONLY ONE from: Happy, Sad, Anxious, Angry, Calm, Confused)
-        2) THEN, provide comprehensive psychological advice
+        **IMPORTANT INSTRUCTIONS:**
+        1. FIRST, analyze the user's diary entries to determine their overall emotional mood
+        2. Choose ONE mood ONLY from this list: Happy, Sad, Anxious, Angry, Calm, Confused
+        3. Your mood classification should be based SOLELY on the user's expressed emotions in their diary
+        4. THEN, provide psychological advice that matches their mood
 
         USER PROFILE:
         - MBTI Personality: {character_type}
@@ -34,29 +35,30 @@ class DiaryPsychologistAdvisor:
         USER'S DIARY ENTRIES:
         {diary_text}
 
-        **YOUR RESPONSE MUST START WITH THE MOOD LABEL ON ITS OWN LINE:**
-        [Mood: Your chosen mood label]
+        **YOUR RESPONSE MUST START WITH THIS EXACT FORMAT:**
+        MOOD: [Your chosen mood from the list]
 
-        **THEN PROVIDE ADVICE WITH THESE EXACT SECTIONS:**
+        **THEN PROVIDE ADVICE WITH THESE SECTIONS:**
 
-        **Emotional Patterns:**
-        [Analyze recurring emotions, concerns, and mental states from the diaries]
+        **Emotional Analysis:**
+        [Analyze what the user is feeling based on their diary]
 
-        **Strengths & Challenges:**
-        [Connect diary content with their personality traits]
+        **Understanding Your Emotions:**
+        [Explain why they might be feeling this way]
 
-        **Practical Recommendations:**
-        [Suggest specific activities, coping strategies, or mindset shifts]
+        **Coping Strategies:**
+        [Suggest specific actions for their current mood]
 
-        **Motivational Guidance:**
-        [Offer encouraging words and perspective]
+        **Positive Perspective:**
+        [Offer encouraging words]
 
-        **Growth Opportunities:**
-        [Areas for personal development based on diary patterns]
+        **Long-term Growth:**
+        [Suggest how to work with these emotions]
 
-        Write in a warm, empathetic tone. Use the same language as the diary entries.
-        Keep your response between 300-400 words.
-        Follow this structure exactly.
+        Write in a warm, empathetic tone. If the user is angry, acknowledge their anger and provide anger management strategies.
+        If the user is sad, provide comfort and support.
+        Match your advice to their actual emotional state.
+        Keep response between 300-400 words.
         """
 
     def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str = None) -> Dict[str, Any]:
@@ -67,6 +69,9 @@ class DiaryPsychologistAdvisor:
 
                 # Prepare diary text (limit length to avoid token limits)
                 combined_diaries = self._prepare_diary_text(diaries)
+                
+                # FIRST, analyze the mood directly from the diary content
+                mood = self._analyze_mood_from_diaries(diaries)
 
                 prompt = self.advice_prompt.format(
                     diary_text=combined_diaries,
@@ -79,22 +84,22 @@ class DiaryPsychologistAdvisor:
                     model=self.model_name,
                     contents=prompt,
                     config={
-                        "system_instruction": "You are a compassionate psychologist and life coach. You MUST follow the response structure exactly as specified in the prompt.",
+                        "system_instruction": "You are a compassionate psychologist. You MUST start your response with 'MOOD: [mood]' where mood is chosen from: Happy, Sad, Anxious, Angry, Calm, Confused. The mood should reflect the user's diary content, not general advice.",
                         "temperature": 0.7,
                         "top_p": 0.9
                     }
                 )
 
-                # Extract mood from the response
-                mood = self._extract_mood_from_response(response.text)
+                # Extract mood from the AI's response
+                ai_mood = self._extract_mood_from_response(response.text)
                 
-                # If response doesn't follow structure, enforce it
+                # Use the AI's mood if it makes sense, otherwise use our diary analysis
+                final_mood = self._validate_mood(ai_mood, mood, response.text)
+                
                 advice_text = response.text
-                if not advice_text.strip().startswith("[Mood:"):
-                    advice_text = self._enforce_response_structure(advice_text, mood, character_type, sign)
 
                 return {
-                    "mood": mood,
+                    "mood": final_mood,
                     "advice": advice_text,
                     "analysis_date": datetime.utcnow().isoformat(),
                     "diaries_analyzed": len(diaries),
@@ -105,6 +110,7 @@ class DiaryPsychologistAdvisor:
             except Exception as e:
                 logger.error(f"Error analyzing diaries: {str(e)}")
                 return {
+                    "mood": "Calm",
                     "advice": self._get_fallback_advice(character_type, sign),
                     "analysis_date": datetime.utcnow().isoformat(),
                     "diaries_analyzed": len(diaries) if diaries else 0,
@@ -112,67 +118,88 @@ class DiaryPsychologistAdvisor:
                     "error": str(e)
                 }
 
+    def _analyze_mood_from_diaries(self, diaries: List[str]) -> str:
+        """Analyze mood directly from diary content"""
+        if not diaries:
+            return "Calm"
+        
+        # Use the most recent diary for mood analysis
+        latest_diary = diaries[-1].lower()
+        
+        # Define emotion keywords with weights
+        emotion_keywords = {
+            "angry": ["angry", "mad", "furious", "rage", "pissed", "irritated", "annoyed", "hate", "frustrated"],
+            "sad": ["sad", "depressed", "unhappy", "miserable", "cry", "tears", "lonely", "heartbroken"],
+            "anxious": ["anxious", "worried", "nervous", "stressed", "panic", "afraid", "scared", "fear"],
+            "happy": ["happy", "joy", "excited", "glad", "pleased", "content", "delighted", "great"],
+            "confused": ["confused", "uncertain", "unsure", "doubt", "question", "perplexed", "bewildered"],
+            "calm": ["calm", "peaceful", "relaxed", "serene", "tranquil", "chill", "content"]
+        }
+        
+        # Count occurrences of each emotion
+        mood_scores = {mood: 0 for mood in emotion_keywords}
+        
+        for mood, keywords in emotion_keywords.items():
+            for keyword in keywords:
+                if keyword in latest_diary:
+                    mood_scores[mood] += 1
+        
+        # Also check for stronger emotional words
+        strong_indicators = {
+            "angry": ["furious", "rage", "hate", "pissed"],
+            "sad": ["depressed", "heartbroken", "miserable"],
+            "anxious": ["panic", "terrified", "fearful"]
+        }
+        
+        for mood, strong_words in strong_indicators.items():
+            for word in strong_words:
+                if word in latest_diary:
+                    mood_scores[mood] += 3  # Extra weight for strong emotions
+        
+        # Get the mood with highest score
+        if max(mood_scores.values()) > 0:
+            return max(mood_scores, key=mood_scores.get)
+        
+        return "Calm"
+
     def _extract_mood_from_response(self, response_text: str) -> str:
         """Extract mood label from the AI response"""
         # Mood labels to look for
         mood_labels = ["Happy", "Sad", "Anxious", "Angry", "Calm", "Confused"]
         
-        # First check for structured mood label
-        lines = response_text.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line.startswith("[Mood:"):
-                for mood in mood_labels:
-                    if mood.lower() in line.lower():
-                        return mood
+        # Check for structured mood format at the beginning
+        lines = response_text.strip().split('\n')
+        if lines and lines[0].startswith('MOOD:'):
+            mood_part = lines[0].replace('MOOD:', '').strip()
+            for mood in mood_labels:
+                if mood.lower() == mood_part.lower():
+                    return mood
         
-        # Fallback: Check for each mood label in the response
-        response_lower = response_text.lower()
-        for mood in mood_labels:
-            if mood.lower() in response_lower:
-                return mood
+        # Check for mood in the first few lines
+        for line in lines[:3]:
+            line_lower = line.lower()
+            for mood in mood_labels:
+                if mood.lower() in line_lower and f"mood: {mood.lower()}" in line_lower:
+                    return mood
         
-        # Default to "Calm" if no mood found
+        # Default to "Calm" if no clear mood found
         return "Calm"
     
-    def _enforce_response_structure(self, response_text: str, mood: str, character_type: str, sign: str) -> str:
-        """Enforce the response structure if AI doesn't follow it"""
-        structured_response = f"[Mood: {mood}]\n\n"
+    def _validate_mood(self, ai_mood: str, diary_mood: str, response_text: str) -> str:
+        """Validate that the AI's mood matches the diary content"""
+        # If AI says calm but diary analysis says angry, trust the diary
+        if diary_mood == "Angry" and ai_mood == "Calm":
+            logger.warning(f"AI returned Calm but diary analysis says Angry. Using Angry.")
+            return "Angry"
         
-        # Check if response already has sections
-        sections = [
-            "**Emotional Patterns:**",
-            "**Strengths & Challenges:**",
-            "**Practical Recommendations:**",
-            "**Motivational Guidance:**",
-            "**Growth Opportunities:**"
-        ]
+        # Similarly for other strong emotions
+        strong_emotions = ["Angry", "Sad", "Anxious"]
+        if diary_mood in strong_emotions and ai_mood == "Calm":
+            logger.warning(f"AI returned Calm but diary analysis says {diary_mood}. Using {diary_mood}.")
+            return diary_mood
         
-        has_sections = any(section in response_text for section in sections)
-        
-        if has_sections:
-            # If it has some structure, use it as is
-            structured_response += response_text
-        else:
-            # If completely unstructured, create a structured version
-            structured_response += f"""**Emotional Patterns:**
-Based on your diary entries, I notice {mood.lower()} emotions are prominent. Your entries reveal...
-
-**Strengths & Challenges:**
-As a {character_type}, you bring specific strengths to these situations. Your {sign} nature suggests...
-
-**Practical Recommendations:**
-1. Try journaling about...
-2. Consider implementing...
-3. Practice...
-
-**Motivational Guidance:**
-Remember that every emotion serves a purpose. Your journey of self-discovery is valuable and shows great courage.
-
-**Growth Opportunities:**
-This experience provides an opportunity to develop deeper emotional awareness and resilience."""
-        
-        return structured_response
+        # Otherwise, use AI's mood
+        return ai_mood
     
     def _prepare_diary_text(self, diaries: List[str]) -> str:
         """Prepare diary text for analysis, limiting total length"""
@@ -197,13 +224,14 @@ This experience provides an opportunity to develop deeper emotional awareness an
             - Personality type: {character_type}
             - Zodiac sign: {sign}
             
-            This person hasn't written any diaries yet. Please provide:
+            This person hasn't written any diaries yet. 
+            Start your response with: MOOD: Calm
+            
+            Then provide:
             - Encouragement to start journaling and its benefits
             - General insights about their {character_type} personality type
             - Motivational guidance for self-reflection
             - Keep it positive, supportive, and around 150-200 words
-            
-            **Start your response with:** [Mood: Calm]
             """
             
             response = self.client.models.generate_content(
@@ -211,8 +239,10 @@ This experience provides an opportunity to develop deeper emotional awareness an
                 contents=prompt
             )
             
+            mood = self._extract_mood_from_response(response.text)
+            
             return {
-                "mood": "Calm",
+                "mood": mood,
                 "advice": response.text,
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
@@ -231,23 +261,22 @@ This experience provides an opportunity to develop deeper emotional awareness an
     
     def _get_fallback_advice(self, character_type: str, sign: str) -> str:
         """Provide fallback advice when AI service is unavailable"""
-        return f"""[Mood: Calm]
+        return f"""MOOD: Calm
 
-**Emotional Patterns:**
+**Emotional Analysis:**
 Starting a journaling practice is the first step toward greater emotional awareness.
 
-**Strengths & Challenges:**
+**Understanding Your Emotions:**
 As a {character_type}, you likely have rich inner thoughts that deserve expression. Your {sign} nature suggests you may benefit from regular emotional check-ins.
 
-**Practical Recommendations:**
+**Coping Strategies:**
 Start by writing about:
 - Your current feelings and experiences
 - Things you're grateful for today
 - Challenges you're facing and how you're handling them
-- Goals and aspirations that motivate you
 
-**Motivational Guidance:**
+**Positive Perspective:**
 I'm here to support your emotional well-being journey! Journaling can be a powerful tool for self-discovery.
 
-**Growth Opportunities:**
-Regular reflection can help you develop greater self-awareness and emotional intelligence. This is your safe space for honest self-expression."""
+**Long-term Growth:**
+Regular reflection can help you develop greater self-awareness and emotional intelligence."""
