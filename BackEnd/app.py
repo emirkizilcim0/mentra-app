@@ -124,7 +124,7 @@ async def create_db_pool():
                     diary_id VARCHAR(255) NOT NULL UNIQUE,
                     advice TEXT NOT NULL,
                     analysis TEXT NOT NULL,
-                    mood VARCHAR(100) DEFAULT 'Calm',
+                    mood VARCHAR(100),
                     character_type VARCHAR(100),
                     sign VARCHAR(100),
                     has_advice BOOLEAN DEFAULT TRUE,
@@ -164,55 +164,6 @@ async def create_db_pool():
         except Exception as e:
             logger.warning(f"Could not create indexes (might already exist): {e}")
         
-        # Update existing records in user_analyses to have mood in analysis_data
-        try:
-            await conn.execute('''
-                UPDATE user_analyses 
-                SET analysis_data = jsonb_set(
-                    COALESCE(analysis_data, '{}'::jsonb),
-                    '{mood}',
-                    CASE
-                        WHEN advice_text ILIKE '%anxious%' OR advice_text ILIKE '%anxiety%' OR advice_text ILIKE '%stress%' OR advice_text ILIKE '%worried%' OR advice_text ILIKE '%nervous%' THEN '"Anxious"'
-                        WHEN advice_text ILIKE '%happy%' OR advice_text ILIKE '%joy%' OR advice_text ILIKE '%excited%' OR advice_text ILIKE '%great%' OR advice_text ILIKE '%wonderful%' THEN '"Happy"'
-                        WHEN advice_text ILIKE '%sad%' OR advice_text ILIKE '%depressed%' OR advice_text ILIKE '%down%' OR advice_text ILIKE '%unhappy%' OR advice_text ILIKE '%grieving%' THEN '"Sad"'
-                        WHEN advice_text ILIKE '%angry%' OR advice_text ILIKE '%anger%' OR advice_text ILIKE '%frustrated%' OR advice_text ILIKE '%irritated%' OR advice_text ILIKE '%upset%' THEN '"Angry"'
-                        WHEN advice_text ILIKE '%calm%' OR advice_text ILIKE '%peaceful%' OR advice_text ILIKE '%relaxed%' OR advice_text ILIKE '%serene%' OR advice_text ILIKE '%tranquil%' THEN '"Calm"'
-                        WHEN advice_text ILIKE '%confused%' OR advice_text ILIKE '%uncertain%' OR advice_text ILIKE '%unsure%' OR advice_text ILIKE '%indecisive%' THEN '"Confused"'
-                        ELSE '"Calm"'
-                    END::jsonb
-                )
-                WHERE analysis_data IS NULL OR analysis_data->>'mood' IS NULL OR analysis_data->>'mood' = '';
-            ''')
-            
-            # Also add character_type, sign, and birth_map if missing in user_analyses
-            await conn.execute('''
-                UPDATE user_analyses 
-                SET analysis_data = jsonb_set(
-                    analysis_data,
-                    '{character_type}',
-                    '"Unknown"'
-                )
-                WHERE analysis_data->>'character_type' IS NULL;
-                
-                UPDATE user_analyses 
-                SET analysis_data = jsonb_set(
-                    analysis_data,
-                    '{sign}',
-                    '"Unknown"'
-                )
-                WHERE analysis_data->>'sign' IS NULL;
-                
-                UPDATE user_analyses 
-                SET analysis_data = jsonb_set(
-                    analysis_data,
-                    '{birth_map}',
-                    '"Unknown"'
-                )
-                WHERE analysis_data->>'birth_map' IS NULL;
-            ''')
-        except Exception as e:
-            logger.warning(f"Could not update existing data: {e}")
-        
     logger.info("Database setup completed")
 
 @app.on_event("startup")
@@ -244,17 +195,19 @@ class DiaryAnalysisRequest(BaseModel):
 
 class AnalysisResponse(BaseModel):
     advice: str
-    mood: str = "Calm" 
+    mood: str
     status: str
     analysis_date: str
     diaries_analyzed: int
+    has_advice: Optional[bool] = True
+    diary_id: Optional[str] = None
 
 # Pydantic model for Flutter analyses
 class FlutterAnalysis(BaseModel):
     diary_id: str
     advice: str
     analysis: str
-    mood: Optional[str] = "Calm"
+    mood: Optional[str] = None
     character_type: Optional[str] = None
     sign: Optional[str] = None
     has_advice: Optional[bool] = True
@@ -356,12 +309,25 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         if analysis_result["status"] == "error":
             logger.error(f"Analysis error: {analysis_result.get('error')}")
         
-        # Save the analysis result
+        # Get the mood from analysis_result
+        mood = analysis_result.get("mood")
+        
+        # Generate a unique diary_id
+        diary_id = f"{request.user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Save to analyses table (for Flutter app)
+        await connection_pool.execute('''
+            INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ''', diary_id, analysis_result["advice"], analysis_result["advice"], 
+             mood, request.character_type, request.sign, True)
+        
+        # Save to user_analyses table
         analysis_data = json.dumps({
             "character_type": request.character_type,
             "sign": request.sign,
             "birth_map": request.birth_map,
-            "mood": analysis_result.get("mood", "Calm"),
+            "mood": mood,
             "has_advice": True
         })
         
@@ -374,18 +340,34 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         
         return {
             "advice": analysis_result["advice"],
-            "mood": analysis_result.get("mood", "Calm"),
-            "status": "success",
+            "mood": mood,
+            "status": analysis_result.get("status", "success"),
             "analysis_date": analysis_result["analysis_date"],
             "diaries_analyzed": analysis_result["diaries_analyzed"],
-            "has_advice": True
+            "has_advice": True,
+            "diary_id": diary_id
         }
         
     except Exception as e:
-        logger.error(f"Error analyzing diaries: {e}")
+        logger.error(f"Error analyzing diaries: {e}", exc_info=True)
+        
+        # Get fallback advice from diary_service
+        advisor = get_psychologist()
+        fallback_advice = advisor._get_fallback_advice(request.character_type, request.sign)
+        
+        # Extract mood from fallback advice
+        fallback_mood = "Calm"  # Default if extraction fails
+        if fallback_advice.startswith("MOOD:"):
+            mood_part = fallback_advice.split("MOOD:")[1].split("\n")[0].strip()
+            mood_labels = ["Happy", "Sad", "Anxious", "Angry", "Calm", "Confused"]
+            for m in mood_labels:
+                if m.lower() == mood_part.lower():
+                    fallback_mood = m
+                    break
+        
         return {
-            "advice": "I'm here to help you with psychological insights! Start by writing your first diary entry to get personalized advice.",
-            "mood": "Calm",
+            "advice": fallback_advice,
+            "mood": fallback_mood,
             "status": "success",
             "analysis_date": datetime.utcnow().isoformat(),
             "diaries_analyzed": 0,
@@ -424,10 +406,10 @@ async def get_analysis_history(user_id: str, limit: int = 10):
                     logger.warning(f"Could not parse analysis_data: {e}")
                     analysis_data = {}
             
-            mood = analysis_data.get("mood", "Calm")
-            character_type = analysis_data.get("character_type", "Unknown")
-            sign = analysis_data.get("sign", "Unknown")
-            birth_map = analysis_data.get("birth_map", "Unknown")
+            mood = analysis_data.get("mood")
+            character_type = analysis_data.get("character_type")
+            sign = analysis_data.get("sign")
+            birth_map = analysis_data.get("birth_map")
             has_advice = analysis["has_advice"] if analysis["has_advice"] is not None else True
             
             result_analyses.append({
@@ -499,7 +481,7 @@ async def get_all_analyses():
                 "diary_id": analysis["diary_id"],
                 "advice": analysis["advice"],
                 "analysis": analysis["analysis"],
-                "mood": analysis["mood"] or "Calm",
+                "mood": analysis["mood"],
                 "character_type": analysis["character_type"],
                 "sign": analysis["sign"],
                 "has_advice": bool(analysis["has_advice"]) if analysis["has_advice"] is not None else True,
@@ -569,7 +551,7 @@ async def get_analysis_by_diary_id(diary_id: str):
             "diary_id": analysis["diary_id"],
             "advice": analysis["advice"],
             "analysis": analysis["analysis"],
-            "mood": analysis["mood"] or "Calm",
+            "mood": analysis["mood"],
             "character_type": analysis["character_type"],
             "sign": analysis["sign"],
             "has_advice": bool(analysis["has_advice"]) if analysis["has_advice"] is not None else True,
@@ -620,22 +602,10 @@ async def health_check():
         else:
             db_status = "disconnected"
         
-        # Check if analyses table has has_advice column
-        has_advice_column = False
-        if connection_pool:
-            async with connection_pool.acquire() as conn:
-                has_advice_column = await conn.fetchval('''
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.columns 
-                        WHERE table_name = 'analyses' AND column_name = 'has_advice'
-                    )
-                ''')
-        
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
             "database": db_status,
-            "has_advice_column": has_advice_column,
             "message": "Mentra Backend is running"
         }
     except Exception as e:
