@@ -23,10 +23,11 @@ class DiaryPsychologistAdvisor:
         You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
 
         **IMPORTANT INSTRUCTIONS:**
-        1. FIRST, analyze the user's diary entries to determine their overall emotional mood
-        2. Choose ONE mood ONLY from this list: Happy, Sad, Anxious, Angry, Calm, Confused
-        3. Your mood classification should be based SOLELY on the user's expressed emotions in their diary
-        4. THEN, provide psychological advice that matches their mood
+        1. FIRST, analyze the language of the diary entries. Respond in the SAME language as the diary.
+        2. THEN, analyze the user's diary entries to determine their overall emotional mood
+        3. Choose ONE mood ONLY from this list: Happy, Sad, Anxious, Angry, Calm, Confused
+        4. Your mood classification should be based SOLELY on the user's expressed emotions in their diary
+        5. Provide psychological advice that matches their mood and is in the same language
 
         USER PROFILE:
         - MBTI Personality: {character_type}
