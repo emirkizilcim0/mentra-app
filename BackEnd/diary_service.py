@@ -14,6 +14,7 @@ class DiaryPsychologistAdvisor:
             api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
+            
             raise ValueError("Gemini API key is required")
 
         self.client = genai.Client(api_key=api_key)
