@@ -783,7 +783,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
 
 @app.get("/analyses")
 async def get_user_analyses(
-    user_id: str, 
+    user_id: Optional[str] = None,  # Make user_id optional
     diary_id: Optional[int] = None, 
     limit: int = 10
 ):
@@ -793,6 +793,18 @@ async def get_user_analyses(
             raise HTTPException(status_code=500, detail="Database not configured")
         
         limit = int(limit)
+        
+        # If no user_id provided, return error
+        if not user_id:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "MISSING_PARAMETER",
+                    "message": "user_id parameter is required",
+                    "example": "/analyses?user_id=USER_ID_HERE"
+                }
+            )
+        
         if diary_id:
             analyses = await connection_pool.fetch(f'''
                 SELECT id, analysis_key, diary_id, user_id, advice, mood, mood_source, 
@@ -829,9 +841,12 @@ async def get_user_analyses(
                 }
                 for analysis in analyses
             ],
-            "total": len(analyses)
+            "total": len(analyses),
+            "user_id": user_id
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching analyses: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch analyses")
@@ -842,19 +857,34 @@ def safe_int(value, default=0):
     except (TypeError, ValueError):
         return default
 
+from pydantic import BaseModel
+from typing import Optional
+
+# Add this model for the POST /analyses endpoint
+class SaveAnalysisRequest(BaseModel):
+    user_id: str
+    diary_id: Optional[int] = 0
+    analysis_key: Optional[str] = None
+    advice: str
+    mood: str = "Neutral"
+    mood_source: str = "ai_detected"
+    character_type: str = "default"
+    sign: str = "unknown"
+    has_advice: bool = True
+
 @app.post("/analyses")
-async def save_analysis(analysis_data: dict):
+async def save_analysis(request: SaveAnalysisRequest):
     """Save an analysis result (for backward compatibility)"""
     try:
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
         # Extract data with defaults
-        diary_id = safe_int(analysis_data.get("diary_id", 0))
-        analysis_key = analysis_data.get("analysis_key", create_analysis_key(
-            analysis_data.get("user_id", "unknown"), 
+        diary_id = safe_int(request.diary_id, 0)
+        analysis_key = request.analysis_key or create_analysis_key(
+            request.user_id, 
             diary_id
-        ))
+        )
         
         # Check if analysis already exists
         existing = await connection_pool.fetchval('''
@@ -867,13 +897,13 @@ async def save_analysis(analysis_data: dict):
                 UPDATE analyses 
                 SET advice = $1, mood = $2, mood_source = $3, updated_at = CURRENT_TIMESTAMP
                 WHERE analysis_key = $4
-            ''', analysis_data.get("advice", ""), 
-                 analysis_data.get("mood", "Neutral"),
-                 analysis_data.get("mood_source", "ai_detected"),
+            ''', request.advice, 
+                 request.mood,
+                 request.mood_source,
                  analysis_key)
+            action = "updated"
         else:
             # Insert new
-            diary_id = safe_int(analysis_data.get("diary_id", 0))
             await connection_pool.execute('''
                 INSERT INTO analyses (
                     analysis_key, diary_id, user_id, advice, mood, 
@@ -883,23 +913,25 @@ async def save_analysis(analysis_data: dict):
             ''', 
                 analysis_key,
                 diary_id,
-                analysis_data.get("user_id", "unknown"),
-                analysis_data.get("advice", ""),
-                analysis_data.get("mood", "Neutral"),
-                analysis_data.get("mood_source", "ai_detected"),
-                analysis_data.get("character_type", "default"),
-                analysis_data.get("sign", "unknown"),
-                analysis_data.get("has_advice", True)
+                request.user_id,
+                request.advice,
+                request.mood,
+                request.mood_source,
+                request.character_type,
+                request.sign,
+                request.has_advice
             )
+            action = "created"
         
         return {
-            "message": "Analysis saved successfully",
+            "message": f"Analysis {action} successfully",
             "analysis_key": analysis_key,
-            "status": "success"
+            "status": "success",
+            "action": action
         }
         
     except Exception as e:
-        logger.error(f"Error saving analysis: {e}")
+        logger.error(f"Error saving analysis: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save analysis")
 
 # ============== OTHER ENDPOINTS ==============
