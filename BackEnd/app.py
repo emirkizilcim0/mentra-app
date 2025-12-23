@@ -202,6 +202,18 @@ class AnalysisResponse(BaseModel):
     has_advice: Optional[bool] = True
     diary_id: Optional[str] = None
 
+# New response model for individual diary analysis
+class IndividualDiaryAnalysis(BaseModel):
+    diary_index: int
+    mood: str
+    advice: str
+    analysis_date: str
+    status: str
+
+class MultipleDiaryAnalysisResponse(BaseModel):
+    entries_analyzed: int
+    results: List[IndividualDiaryAnalysis]
+
 # Pydantic model for Flutter analyses
 class FlutterAnalysis(BaseModel):
     diary_id: str
@@ -286,7 +298,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         
         # Get recent diaries for the user
         diaries = await connection_pool.fetch('''
-            SELECT content, mood, tags, created_at
+            SELECT id, content, mood, tags, created_at
             FROM user_diaries 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
@@ -306,48 +318,106 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             birth_map=request.birth_map
         )
 
-        if analysis_result["status"] == "error":
+        if "status" in analysis_result and analysis_result["status"] == "error":
             logger.error(f"Analysis error: {analysis_result.get('error')}")
         
-        # Get the mood from analysis_result
-        mood = analysis_result.get("mood")
-        logger.info(f"Received mood from diary_service: {mood}")
-        
-        # Generate a unique diary_id
-        diary_id = f"{request.user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Save to analyses table (for Flutter app)
-        await connection_pool.execute('''
-            INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ''', diary_id, analysis_result["advice"], analysis_result["advice"], 
-             mood, request.character_type, request.sign, True)
-        
-        # Save to user_analyses table
-        analysis_data = json.dumps({
-            "character_type": request.character_type,
-            "sign": request.sign,
-            "birth_map": request.birth_map,
-            "mood": mood,
-            "has_advice": True
-        })
-        
-        analysis_id = await connection_pool.fetchval('''
-            INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id
-        ''', request.user_id, "diary_analysis", analysis_result["advice"], 
-             len(diaries), analysis_data, True)
-        
-        return {
-            "advice": analysis_result["advice"],
-            "mood": mood,
-            "status": analysis_result.get("status", "success"),
-            "analysis_date": analysis_result["analysis_date"],
-            "diaries_analyzed": analysis_result["diaries_analyzed"],
-            "has_advice": True,
-            "diary_id": diary_id
-        }
+        # Handle the new response structure
+        if "results" in analysis_result:
+            # Multiple diaries were analyzed separately
+            entries_analyzed = analysis_result.get("entries_analyzed", 0)
+            results = analysis_result.get("results", [])
+            
+            # Save each analysis separately to the analyses table
+            analysis_responses = []
+            for result in results:
+                diary_idx = result.get("diary_index", 1)
+                if 0 <= diary_idx - 1 < len(diaries):
+                    diary_record = diaries[diary_idx - 1]
+                    # Generate unique diary_id for each analysis
+                    diary_id = f"{request.user_id}_{diary_record['id']}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+                    
+                    # Save to analyses table (for Flutter app)
+                    await connection_pool.execute('''
+                        INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ''', diary_id, result["advice"], result["advice"], 
+                         result["mood"], request.character_type, request.sign, True)
+                    
+                    analysis_responses.append({
+                        "diary_index": diary_idx,
+                        "mood": result["mood"],
+                        "advice": result["advice"],
+                        "analysis_date": result["analysis_date"],
+                        "status": result.get("status", "success"),
+                        "diary_id": diary_id
+                    })
+                else:
+                    logger.warning(f"Diary index {diary_idx} out of range")
+            
+            # Also save a summary analysis to user_analyses table
+            if results:
+                # Use the first result as summary or combine them
+                summary_result = results[0]
+                analysis_data = json.dumps({
+                    "character_type": request.character_type,
+                    "sign": request.sign,
+                    "birth_map": request.birth_map,
+                    "mood": summary_result["mood"],
+                    "has_advice": True,
+                    "individual_analyses": len(results)
+                })
+                
+                analysis_id = await connection_pool.fetchval('''
+                    INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING id
+                ''', request.user_id, "diary_analysis", summary_result["advice"], 
+                     entries_analyzed, analysis_data, True)
+            
+            return {
+                "entries_analyzed": entries_analyzed,
+                "results": analysis_responses
+            }
+        else:
+            # Old structure (single analysis for all diaries)
+            mood = analysis_result.get("mood")
+            logger.info(f"Received mood from diary_service: {mood}")
+            
+            # Generate a unique diary_id
+            diary_id = f"{request.user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Save to analyses table (for Flutter app)
+            await connection_pool.execute('''
+                INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ''', diary_id, analysis_result["advice"], analysis_result["advice"], 
+                 mood, request.character_type, request.sign, True)
+            
+            # Save to user_analyses table
+            analysis_data = json.dumps({
+                "character_type": request.character_type,
+                "sign": request.sign,
+                "birth_map": request.birth_map,
+                "mood": mood,
+                "has_advice": True
+            })
+            
+            analysis_id = await connection_pool.fetchval('''
+                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id
+            ''', request.user_id, "diary_analysis", analysis_result["advice"], 
+                 len(diaries), analysis_data, True)
+            
+            return {
+                "advice": analysis_result["advice"],
+                "mood": mood,
+                "status": analysis_result.get("status", "success"),
+                "analysis_date": analysis_result["analysis_date"],
+                "diaries_analyzed": analysis_result.get("diaries_analyzed", len(diaries)),
+                "has_advice": True,
+                "diary_id": diary_id
+            }
         
     except Exception as e:
         logger.error(f"Error analyzing diaries: {e}", exc_info=True)
@@ -452,7 +522,7 @@ async def delete_diary(diary_id: int, user_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting diary: $e")
+        logger.error(f"Error deleting diary: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete diary")
 
 # ==================== FLUTTER ANALYSES ENDPOINTS ====================
