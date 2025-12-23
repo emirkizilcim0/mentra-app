@@ -20,59 +20,74 @@ class DiaryPsychologistAdvisor:
         self.model_name = model
         
         self.advice_prompt = """
-        You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
+You are a compassionate psychologist and life coach. Based on the user's diary entries and their personality profile, provide personalized advice and motivational guidance.
 
-        **IMPORTANT INSTRUCTIONS:**
-        1. FIRST, analyze the language of the diary entries. Respond in the SAME language as the diary.
-        2. THEN, analyze the user's diary entries to determine their overall emotional mood
-        3. Choose ONE mood ONLY from this list: Happy, Sad, Anxious, Angry, Calm, Confused
-        4. Your mood classification should be based SOLELY on the user's expressed emotions in their diary
-        5. Provide psychological advice that matches their mood and is in the same language
+**CRITICAL INSTRUCTION FOR MOOD DETECTION:**
+1. Read the user's diary entries CAREFULLY.
+2. Identify the PRIMARY emotion the user is expressing.
+3. If the user says they feel "anxious", "worried", "nervous", or describes anxiety symptoms, the mood is **ANXIOUS**.
+4. If the user says they feel "angry", "mad", "furious", or expresses anger, the mood is **ANGRY**.
+5. If the user says they feel "sad", "depressed", "unhappy", or expresses sadness, the mood is **SAD**.
+6. If the user says they feel "happy", "joyful", "excited", or expresses happiness, the mood is **HAPPY**.
+7. If the user says they feel "confused", "uncertain", or expresses confusion, the mood is **CONFUSED**.
+8. If the user says they feel "calm", "peaceful", "relaxed", or expresses calmness, the mood is **CALM**.
+9. Only use **NEUTRAL** if the user expresses NO clear emotion or describes a neutral state.
 
-        USER PROFILE:
-        - MBTI Personality: {character_type}
-        - Zodiac Sign: {sign}
+**MOST IMPORTANT:** The mood MUST match the user's OWN WORDS. If they say "I feel anxious", you MUST return "Anxious".
 
-        USER'S DIARY ENTRIES:
-        {diary_text}
+USER PROFILE:
+- MBTI Personality: {character_type}
+- Zodiac Sign: {sign}
 
-        **YOUR RESPONSE MUST START WITH THIS EXACT FORMAT:**
-        MOOD: [Your chosen mood from the list]
+USER'S DIARY ENTRIES:
+{diary_text}
 
-        **THEN PROVIDE ADVICE WITH THESE SECTIONS:**
+**YOUR RESPONSE MUST START WITH THIS EXACT FORMAT:**
+MOOD: [Your chosen mood from: Happy, Sad, Anxious, Angry, Calm, Confused, Neutral]
 
-        **Emotional Analysis:**
-        [Analyze what the user is feeling based on their diary]
+**THEN PROVIDE ADVICE WITH THESE SECTIONS:**
 
-        **Understanding Your Emotions:**
-        [Explain why they might be feeling this way]
+**Emotional Analysis:**
+[Analyze what the user is feeling based on their diary]
 
-        **Coping Strategies:**
-        [Suggest specific actions for their current mood]
+**Understanding Your Emotions:**
+[Explain why they might be feeling this way]
 
-        **Positive Perspective:**
-        [Offer encouraging words]
+**Coping Strategies:**
+[Suggest specific actions for their current mood]
 
-        **Long-term Growth:**
-        [Suggest how to work with these emotions]
+**Positive Perspective:**
+[Offer encouraging words]
 
-        Write in a warm, empathetic tone. If the user is angry, acknowledge their anger and provide anger management strategies.
-        If the user is sad, provide comfort and support.
-        Match your advice to their actual emotional state.
-        Keep response between 300-400 words.
-        """
+**Long-term Growth:**
+[Suggest how to work with these emotions]
+
+Write in a warm, empathetic tone. If the user is anxious, acknowledge their anxiety and provide anxiety management strategies.
+If the user is sad, provide comfort and support.
+If the user is angry, acknowledge their anger and provide anger management strategies.
+Match your advice to their actual emotional state.
+Keep response between 300-400 words.
+"""
 
     def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str = None) -> Dict[str, Any]:
         """Analyze user diaries and provide psychological advice"""
         try:
             if not diaries:
                 return self._provide_general_advice(character_type, sign)
-
+    
             # Prepare diary text (limit length to avoid token limits)
             combined_diaries = self._prepare_diary_text(diaries)
             
             # FIRST, analyze the mood directly from the diary content
             diary_mood = self._analyze_mood_from_diaries(diaries)
+            
+            # Log for debugging - show what we're sending
+            logger.info(f"=== DEBUG DIARY ANALYSIS ===")
+            logger.info(f"Diary content (first 200 chars): {diaries[-1][:200] if diaries else 'No diaries'}")
+            logger.info(f"Diary mood detected by code: {diary_mood}")
+            logger.info(f"Character type: {character_type}")
+            logger.info(f"Sign: {sign}")
+            logger.info(f"=== END DEBUG ===")
             
             # Log for debugging
             logger.info(f"Diary mood analysis: {diary_mood}")
@@ -88,10 +103,22 @@ class DiaryPsychologistAdvisor:
                 model=self.model_name,
                 contents=prompt,
                 config={
-                    "system_instruction": "You are a compassionate psychologist. You MUST start your response with 'MOOD: [mood]' where mood is chosen from: Happy, Sad, Anxious, Angry, Calm, Confused. The mood should reflect the user's diary content, not general advice.",
-                    "temperature": 0.7,
-                    "top_p": 0.9
-                }
+    "system_instruction": """You are a compassionate psychologist. 
+    CRITICAL: You MUST start your response with 'MOOD: [mood]' where mood is chosen from: Happy, Sad, Anxious, Angry, Calm, Confused, Neutral.
+    
+    **MOOD DETECTION RULES:**
+    1. If the user says "I feel anxious" or mentions anxiety symptoms, mood MUST be "Anxious"
+    2. If the user says "I feel angry" or expresses anger, mood MUST be "Angry"  
+    3. If the user says "I feel sad" or expresses sadness, mood MUST be "Sad"
+    4. If the user says "I feel happy" or expresses happiness, mood MUST be "Happy"
+    5. If the user says "I feel confused" or expresses confusion, mood MUST be "Confused"
+    6. If the user says "I feel calm" or expresses calmness, mood MUST be "Calm"
+    7. Only use "Neutral" if NO clear emotion is expressed
+    
+    The mood should reflect the user's EXACT WORDS, not your interpretation.""",
+    "temperature": 0.7,
+    "top_p": 0.9
+}
             )
 
             # Log the raw AI response for debugging
