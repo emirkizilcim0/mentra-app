@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import asyncpg
 import os
+import uuid
 from datetime import datetime
 import logging
 import json  
@@ -205,10 +206,12 @@ class AnalysisResponse(BaseModel):
 # New response model for individual diary analysis
 class IndividualDiaryAnalysis(BaseModel):
     diary_index: int
+    source_diary_id: int
     mood: str
     advice: str
     analysis_date: str
     status: str
+    analysis_id: str
 
 class MultipleDiaryAnalysisResponse(BaseModel):
     entries_analyzed: int
@@ -327,32 +330,36 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             entries_analyzed = analysis_result.get("entries_analyzed", 0)
             results = analysis_result.get("results", [])
             
-            # Save each analysis separately to the analyses table
+            # FIX #1: Use enumerate with zip for efficient indexing
+            # This eliminates the inefficient list.index() call
             analysis_responses = []
-            for result in results:
-                diary_idx = result.get("diary_index", 1)
-                if 0 <= diary_idx - 1 < len(diaries):
-                    diary_record = diaries[diary_idx - 1]
-                    # Generate unique diary_id for each analysis
-                    diary_id = f"{request.user_id}_{diary_record['id']}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-                    
-                    # Save to analyses table (for Flutter app)
-                    await connection_pool.execute('''
-                        INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    ''', diary_id, result["advice"], result["advice"], 
-                         result["mood"], request.character_type, request.sign, True)
-                    
-                    analysis_responses.append({
-                        "diary_index": diary_idx,
-                        "mood": result["mood"],
-                        "advice": result["advice"],
-                        "analysis_date": result["analysis_date"],
-                        "status": result.get("status", "success"),
-                        "diary_id": diary_id
-                    })
-                else:
-                    logger.warning(f"Diary index {diary_idx} out of range")
+            
+            for idx, (diary_record, result) in enumerate(zip(diaries, results), start=1):
+                # Generate truly unique analysis_id with UUID
+                unique_suffix = uuid.uuid4().hex[:8]
+                analysis_id = f"{request.user_id}_{diary_record['id']}_{unique_suffix}"
+                
+                # Be explicit about analysis/advice
+                analysis_text = result["advice"]
+                advice_text = result["advice"]
+                
+                # Save to analyses table (for Flutter app)
+                await connection_pool.execute('''
+                    INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ''', analysis_id, advice_text, analysis_text, 
+                     result["mood"], request.character_type, request.sign, True)
+                
+                # FIX #2: Use clear, explicit field names
+                analysis_responses.append({
+                    "diary_index": idx,  # From enumerate, O(1) operation
+                    "source_diary_id": diary_record["id"],  # Original diary ID from DB
+                    "mood": result["mood"],
+                    "advice": advice_text,
+                    "analysis_date": result["analysis_date"],
+                    "status": result.get("status", "success"),
+                    "analysis_id": analysis_id  # The unique analysis record ID
+                })
             
             # Also save a summary analysis to user_analyses table
             if results:
@@ -364,7 +371,9 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                     "birth_map": request.birth_map,
                     "mood": summary_result["mood"],
                     "has_advice": True,
-                    "individual_analyses": len(results)
+                    "individual_analyses": len(results),
+                    "source_diary_ids": [resp["source_diary_id"] for resp in analysis_responses],
+                    "analysis_ids": [resp["analysis_id"] for resp in analysis_responses]
                 })
                 
                 analysis_id = await connection_pool.fetchval('''
@@ -376,21 +385,23 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             
             return {
                 "entries_analyzed": entries_analyzed,
-                "results": analysis_responses
+                "results": analysis_responses,
+                "status": "success"
             }
         else:
-            # Old structure (single analysis for all diaries)
+            # Old structure (single analysis for all diaries) - for backward compatibility
             mood = analysis_result.get("mood")
             logger.info(f"Received mood from diary_service: {mood}")
             
-            # Generate a unique diary_id
-            diary_id = f"{request.user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+            # Generate unique analysis_id with UUID
+            unique_suffix = uuid.uuid4().hex[:8]
+            analysis_id = f"{request.user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{unique_suffix}"
             
             # Save to analyses table (for Flutter app)
             await connection_pool.execute('''
                 INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ''', diary_id, analysis_result["advice"], analysis_result["advice"], 
+            ''', analysis_id, analysis_result["advice"], analysis_result["advice"], 
                  mood, request.character_type, request.sign, True)
             
             # Save to user_analyses table
@@ -402,7 +413,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                 "has_advice": True
             })
             
-            analysis_id = await connection_pool.fetchval('''
+            user_analysis_id = await connection_pool.fetchval('''
                 INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING id
@@ -416,7 +427,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                 "analysis_date": analysis_result["analysis_date"],
                 "diaries_analyzed": analysis_result.get("diaries_analyzed", len(diaries)),
                 "has_advice": True,
-                "diary_id": diary_id
+                "analysis_id": analysis_id
             }
         
     except Exception as e:
@@ -568,6 +579,12 @@ async def create_analysis(analysis: FlutterAnalysis):
         
         has_advice = analysis.has_advice if analysis.has_advice is not None else True
         
+        # Ensure diary_id is unique with UUID if not provided with one
+        diary_id = analysis.diary_id
+        if not any(char in diary_id for char in ['-', '_']):  # Simple check if it already has UUID
+            unique_suffix = uuid.uuid4().hex[:8]
+            diary_id = f"{diary_id}_{unique_suffix}"
+        
         analysis_id = await connection_pool.fetchval('''
             INSERT INTO analyses (diary_id, advice, analysis, mood, character_type, sign, has_advice)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -581,13 +598,14 @@ async def create_analysis(analysis: FlutterAnalysis):
                 has_advice = EXCLUDED.has_advice,
                 created_at = CURRENT_TIMESTAMP
             RETURNING id
-        ''', analysis.diary_id, analysis.advice, analysis.analysis, 
+        ''', diary_id, analysis.advice, analysis.analysis, 
              analysis.mood, analysis.character_type, analysis.sign, has_advice)
         
         return {
             "message": "Analysis saved successfully",
             "analysis_id": analysis_id,
             "has_advice": has_advice,
+            "diary_id": diary_id,
             "status": "success"
         }
         
