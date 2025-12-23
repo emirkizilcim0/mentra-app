@@ -52,58 +52,197 @@ async def create_db_pool():
     )
     
     async with connection_pool.acquire() as conn:
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS user_diaries (
-                id SERIAL PRIMARY KEY,
-                user_id VARCHAR(255) NOT NULL,
-                content TEXT NOT NULL,
-                mood VARCHAR(100),
-                mood_confidence VARCHAR(20),
-                advice_preview TEXT,
-                tags JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        ''')
+        # FIRST: Check and migrate existing tables
+        await migrate_database_schema(conn)
         
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS user_analyses (
-                id SERIAL PRIMARY KEY,
-                user_id VARCHAR(255) NOT NULL,
-                analysis_type VARCHAR(100) NOT NULL,
-                advice_text TEXT NOT NULL,
-                diaries_analyzed INTEGER,
-                analysis_data JSONB,
-                has_advice BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        ''')
+        # SECOND: Create any missing tables
+        await create_missing_tables(conn)
         
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS analyses (
-                id SERIAL PRIMARY KEY,
-                analysis_key VARCHAR(255) NOT NULL UNIQUE,
-                diary_id INTEGER NOT NULL,
-                user_id VARCHAR(255) NOT NULL,
-                advice TEXT NOT NULL,
-                mood VARCHAR(100),
-                mood_source VARCHAR(50),
-                character_type VARCHAR(100),
-                sign VARCHAR(100),
-                has_advice BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        ''')
-        
-        # Create indexes
-        await conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_user_diaries_user_id ON user_diaries(user_id);
-            CREATE INDEX IF NOT EXISTS idx_analyses_diary_id ON analyses(diary_id);
-            CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id);
-            CREATE INDEX IF NOT EXISTS idx_user_diaries_mood ON user_diaries(mood);
-        ''')
+        # THIRD: Create indexes
+        await create_indexes(conn)
         
         logger.info("Database setup completed")
+
+async def migrate_database_schema(conn):
+    """Migrate existing database schema to new version"""
+    try:
+        # Check if analyses table exists
+        analyses_exists = await conn.fetchval('''
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'analyses'
+            )
+        ''')
+        
+        if analyses_exists:
+            # Check if user_id column exists
+            user_id_exists = await conn.fetchval('''
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'analyses' AND column_name = 'user_id'
+                )
+            ''')
+            
+            if not user_id_exists:
+                logger.info("Migrating analyses table: adding user_id and diary_id columns")
+                
+                # Add new columns
+                await conn.execute('ALTER TABLE analyses ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);')
+                await conn.execute('ALTER TABLE analyses ADD COLUMN IF NOT EXISTS diary_id INTEGER;')
+                await conn.execute('ALTER TABLE analyses ADD COLUMN IF NOT EXISTS mood_source VARCHAR(50);')
+                
+                # Try to parse user_id from existing diary_id field (if it contains user info)
+                # This is a best-effort migration
+                try:
+                    analyses = await conn.fetch('SELECT id, diary_id FROM analyses WHERE user_id IS NULL')
+                    for analysis in analyses:
+                        diary_id_str = analysis["diary_id"]
+                        # Try to extract user_id from old diary_id format
+                        if diary_id_str and '_' in diary_id_str:
+                            parts = diary_id_str.split('_')
+                            if len(parts) >= 2:
+                                user_id_part = parts[0]
+                                diary_id_part = parts[1] if len(parts) > 1 else None
+                                
+                                # Update with extracted user_id and diary_id
+                                await conn.execute('''
+                                    UPDATE analyses 
+                                    SET user_id = $1, 
+                                        diary_id = CASE WHEN $2 ~ '^[0-9]+$' THEN $2::INTEGER ELSE 0 END
+                                    WHERE id = $3
+                                ''', user_id_part, diary_id_part, analysis["id"])
+                    
+                    logger.info(f"Migrated {len(analyses)} existing analyses records")
+                except Exception as e:
+                    logger.warning(f"Could not migrate existing analyses: {e}")
+                    # Set default values for unmigrated records
+                    await conn.execute('UPDATE analyses SET user_id = \'unknown\', diary_id = 0 WHERE user_id IS NULL')
+            
+            # Check for other missing columns
+            column_checks = [
+                ("analysis_key", "VARCHAR(255)"),
+                ("mood_source", "VARCHAR(50)"),
+            ]
+            
+            for column_name, column_type in column_checks:
+                exists = await conn.fetchval(f'''
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_name = 'analyses' AND column_name = '{column_name}'
+                    )
+                ''')
+                
+                if not exists:
+                    await conn.execute(f'ALTER TABLE analyses ADD COLUMN IF NOT EXISTS {column_name} {column_type};')
+                    logger.info(f"Added {column_name} column to analyses table")
+        
+        # Check user_diaries table for new columns
+        user_diaries_exists = await conn.fetchval('''
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'user_diaries'
+            )
+        ''')
+        
+        if user_diaries_exists:
+            # Add mood_confidence if missing
+            mood_confidence_exists = await conn.fetchval('''
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'user_diaries' AND column_name = 'mood_confidence'
+                )
+            ''')
+            
+            if not mood_confidence_exists:
+                await conn.execute('ALTER TABLE user_diaries ADD COLUMN IF NOT EXISTS mood_confidence VARCHAR(20);')
+                logger.info("Added mood_confidence column to user_diaries table")
+            
+            # Add advice_preview if missing
+            advice_preview_exists = await conn.fetchval('''
+                SELECT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'user_diaries' AND column_name = 'advice_preview'
+                )
+            ''')
+            
+            if not advice_preview_exists:
+                await conn.execute('ALTER TABLE user_diaries ADD COLUMN IF NOT EXISTS advice_preview TEXT;')
+                logger.info("Added advice_preview column to user_diaries table")
+        
+    except Exception as e:
+        logger.error(f"Error during database migration: {e}")
+        # Don't crash if migration fails, but log it
+
+async def create_missing_tables(conn):
+    """Create any tables that don't exist"""
+    
+    # Create user_diaries table if it doesn't exist
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS user_diaries (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            content TEXT NOT NULL,
+            mood VARCHAR(100),
+            mood_confidence VARCHAR(20),
+            advice_preview TEXT,
+            tags JSONB,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    ''')
+    
+    # Create user_analyses table if it doesn't exist
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS user_analyses (
+            id SERIAL PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            analysis_type VARCHAR(100) NOT NULL,
+            advice_text TEXT NOT NULL,
+            diaries_analyzed INTEGER,
+            analysis_data JSONB,
+            has_advice BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    ''')
+    
+    # Create analyses table if it doesn't exist (with new schema)
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS analyses (
+            id SERIAL PRIMARY KEY,
+            analysis_key VARCHAR(255) NOT NULL UNIQUE,
+            diary_id INTEGER NOT NULL DEFAULT 0,
+            user_id VARCHAR(255) NOT NULL,
+            advice TEXT NOT NULL,
+            mood VARCHAR(100),
+            mood_source VARCHAR(50),
+            character_type VARCHAR(100),
+            sign VARCHAR(100),
+            has_advice BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    ''')
+    
+    logger.info("Ensured all tables exist")
+
+async def create_indexes(conn):
+    """Create indexes if they don't exist"""
+    indexes = [
+        ("idx_user_diaries_user_id", "user_diaries", "user_id"),
+        ("idx_user_diaries_created_at", "user_diaries", "created_at"),
+        ("idx_analyses_diary_id", "analyses", "diary_id"),
+        ("idx_analyses_user_id", "analyses", "user_id"),
+        ("idx_analyses_analysis_key", "analyses", "analysis_key"),
+        ("idx_user_diaries_mood", "user_diaries", "mood"),
+    ]
+    
+    for index_name, table_name, column_name in indexes:
+        try:
+            await conn.execute(f'''
+                CREATE INDEX IF NOT EXISTS {index_name} 
+                ON {table_name} ({column_name});
+            ''')
+        except Exception as e:
+            logger.warning(f"Could not create index {index_name}: {e}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -150,13 +289,10 @@ class MultipleDiaryAnalysisResponse(BaseModel):
 # ============== HELPER FUNCTIONS ==============
 
 def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, str]:
-    """
-    Detect mood from content with rule-based overrides.
-    Returns: (final_mood, mood_source)
-    """
+    """Detect mood from content with rule-based overrides."""
     content_lower = content.lower()
     
-    # 🎭 Rule-based mood detection (takes priority)
+    # Rule-based mood detection (takes priority)
     angry_keywords = ["angry", "mad", "furious", "rage", "irritated", "annoyed", 
                      "upset", "hate", "frustrated", "cant stand", "pissed"]
     sad_keywords = ["sad", "depressed", "unhappy", "down", "miserable", "hopeless"]
@@ -348,55 +484,42 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             birth_map=request.birth_map
         )
 
-        # Process results
+        # Process results - handle both old and new response formats
+        analysis_responses = []
+        
         if "results" in analysis_result:
+            # NEW FORMAT: Individual diary results
             results = analysis_result.get("results", [])
             
-            # 🔥 CRITICAL FIX #1: Ensure result count matches
             if len(results) != len(diary_records):
-                logger.error(f"Result mismatch: {len(results)} results for {len(diary_records)} diaries")
-                # Pad or truncate to match
-                if len(results) > len(diary_records):
-                    results = results[:len(diary_records)]
-                else:
-                    # Extend with empty results
-                    while len(results) < len(diary_records):
-                        results.append({"mood": "Neutral", "advice": "", "analysis_date": datetime.utcnow().isoformat()})
-            
-            analysis_responses = []
+                logger.warning(f"Result count mismatch: {len(results)} != {len(diary_records)}")
             
             for idx in range(len(diary_records)):
                 diary_record = diary_records[idx]
-                result = results[idx]
                 
-                # Generate analysis key
+                # Get result for this diary (or fallback)
+                result = results[idx] if idx < len(results) else {
+                    "mood": "Neutral",
+                    "advice": "",
+                    "analysis_date": datetime.utcnow().isoformat()
+                }
+                
+                ai_mood = result.get("mood", "Neutral")
+                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
+                
+                # Create analysis key
                 analysis_key = create_analysis_key(
                     request.user_id, 
                     diary_record["id"] if source != "request_content" else 0
                 )
                 
-                # Get AI mood from result
-                ai_mood = result.get("mood", "Neutral")
-                
-                # 🔥 CRITICAL FIX #2: Apply rule-based mood override
-                final_mood, mood_source = detect_mood_from_content(
-                    diary_record["content"], 
-                    ai_mood
-                )
-                
-                # Log mood correction if needed
-                if ai_mood != final_mood:
-                    logger.info(f"⚠️ Mood corrected: '{ai_mood}' → '{final_mood}' for diary {diary_record.get('id', 'unknown')}")
-                    logger.info(f"  Content snippet: '{diary_record['content'][:50]}...'")
-                    logger.info(f"  Source: {mood_source}")
-                
                 advice_text = result["advice"]
                 
-                # Save to PostgreSQL ONLY for real diaries
+                # Save to database for real diaries
                 if connection_pool and source != "request_content":
                     diary_id = diary_record["id"]
                     
-                    # 1. Save to analyses table
+                    # Insert into analyses table
                     await connection_pool.execute('''
                         INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -404,7 +527,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                          final_mood, mood_source, request.character_type, 
                          request.sign, True)
                     
-                    # 2. Update the original diary with mood and advice preview
+                    # Update the diary
                     advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
                     mood_confidence = "high" if mood_source == "content_override" else "medium"
                     
@@ -416,8 +539,6 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                             updated_at = CURRENT_TIMESTAMP 
                         WHERE id = $4 AND user_id = $5
                     ''', final_mood, mood_confidence, advice_preview, diary_id, request.user_id)
-                    
-                    logger.info(f"✅ Updated diary {diary_id}: mood='{final_mood}' source='{mood_source}'")
                 
                 analysis_responses.append({
                     "diary_index": idx + 1,
@@ -431,54 +552,14 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                     "source": source,
                     "advice_saved": source != "request_content"
                 })
-            
-            # Save summary to user_analyses
-            if results and connection_pool and source != "request_content":
-                summary_result = results[0]
-                
-                analysis_data = {
-                    "character_type": request.character_type,
-                    "sign": request.sign,
-                    "birth_map": request.birth_map,
-                    "moods": [resp["mood"] for resp in analysis_responses],
-                    "mood_sources": [resp["mood_source"] for resp in analysis_responses],
-                    "has_advice": True,
-                    "individual_analyses": len(results),
-                    "source_diary_ids": [d["id"] for d in diary_records],
-                    "analysis_keys": [resp["analysis_key"] for resp in analysis_responses],
-                    "source": source
-                }
-                
-                await connection_pool.fetchval('''
-                    INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING id
-                ''', request.user_id, f"diary_analysis_{source}", summary_result["advice"], 
-                     len(diary_contents), analysis_data, True)
-            
-            return {
-                "entries_analyzed": len(results),
-                "results": analysis_responses,
-                "status": "success",
-                "diaries_analyzed": len(diary_contents),
-                "source": source,
-                "advice_saved": source != "request_content",
-                "message": f"Successfully analyzed {len(diary_contents)} diaries",
-                "mood_corrections": sum(1 for r in analysis_responses if r["mood_source"] == "content_override")
-            }
-        
-        # Fallback for single analysis structure
         else:
+            # OLD FORMAT: Single analysis for all diaries
             ai_mood = analysis_result.get("mood", "Neutral")
             advice_text = analysis_result["advice"]
             
-            # Apply rule-based mood detection to each diary
-            analysis_responses = []
+            # Apply rule-based detection to each diary
             for idx, diary_record in enumerate(diary_records):
-                final_mood, mood_source = detect_mood_from_content(
-                    diary_record["content"], 
-                    ai_mood
-                )
+                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
                 
                 # Create analysis key
                 analysis_key = create_analysis_key(
@@ -498,44 +579,66 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                     "source": source,
                     "advice_saved": source != "request_content"
                 })
+                
+                # Save to database for real diaries
+                if connection_pool and source != "request_content" and diary_record["id"] != "request_0":
+                    diary_id = diary_record["id"]
+                    
+                    # Insert analysis
+                    await connection_pool.execute('''
+                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ''', analysis_key, diary_id, request.user_id, advice_text, 
+                         final_mood, mood_source, request.character_type, 
+                         request.sign, True)
+                    
+                    # Update diary
+                    advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
+                    mood_confidence = "high" if mood_source == "content_override" else "medium"
+                    
+                    await connection_pool.execute('''
+                        UPDATE user_diaries 
+                        SET mood = $1, 
+                            mood_confidence = $2,
+                            advice_preview = $3,
+                            updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = $4 AND user_id = $5
+                    ''', final_mood, mood_confidence, advice_preview, diary_id, request.user_id)
+        
+        # Save summary to user_analyses for real diaries
+        if connection_pool and source != "request_content" and analysis_responses:
+            summary_result = analysis_responses[0]
             
-            # Save to PostgreSQL if from database
-            if connection_pool and source != "request_content":
-                for resp in analysis_responses:
-                    if resp["source_diary_id"] > 0:
-                        # Save individual analysis
-                        await connection_pool.execute('''
-                            INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                        ''', resp["analysis_key"], resp["source_diary_id"], request.user_id, 
-                             advice_text, resp["mood"], resp["mood_source"], 
-                             request.character_type, request.sign, True)
-                        
-                        # Update diary
-                        advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
-                        mood_confidence = "high" if resp["mood_source"] == "content_override" else "medium"
-                        
-                        await connection_pool.execute('''
-                            UPDATE user_diaries 
-                            SET mood = $1, 
-                                mood_confidence = $2,
-                                advice_preview = $3,
-                                updated_at = CURRENT_TIMESTAMP 
-                            WHERE id = $4 AND user_id = $5
-                        ''', resp["mood"], mood_confidence, advice_preview, 
-                             resp["source_diary_id"], request.user_id)
-            
-            return {
-                "advice": advice_text,
-                "mood": analysis_responses[0]["mood"] if analysis_responses else ai_mood,
-                "status": analysis_result.get("status", "success"),
-                "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat()),
-                "diaries_analyzed": analysis_result.get("diaries_analyzed", len(diary_contents)),
+            analysis_data = {
+                "character_type": request.character_type,
+                "sign": request.sign,
+                "birth_map": request.birth_map,
+                "moods": [resp["mood"] for resp in analysis_responses],
+                "mood_sources": [resp["mood_source"] for resp in analysis_responses],
                 "has_advice": True,
-                "source": source,
-                "advice_saved": source != "request_content",
-                "individual_results": analysis_responses if len(analysis_responses) > 1 else None
+                "individual_analyses": len(analysis_responses),
+                "source_diary_ids": [d["id"] for d in diary_records if isinstance(d["id"], int)],
+                "analysis_keys": [resp["analysis_key"] for resp in analysis_responses],
+                "source": source
             }
+            
+            await connection_pool.fetchval('''
+                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id
+            ''', request.user_id, f"diary_analysis_{source}", advice_text, 
+                 len(diary_contents), analysis_data, True)
+        
+        return {
+            "entries_analyzed": len(diary_contents),
+            "results": analysis_responses,
+            "status": "success",
+            "diaries_analyzed": len(diary_contents),
+            "source": source,
+            "advice_saved": source != "request_content",
+            "message": f"Successfully analyzed {len(diary_contents)} diaries",
+            "mood_corrections": sum(1 for r in analysis_responses if r["mood_source"] == "content_override")
+        }
         
     except HTTPException:
         raise
@@ -560,105 +663,6 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
 
 # ============== OTHER ENDPOINTS ==============
 
-@app.get("/diaries/{diary_id}/advice")
-async def get_diary_advice(diary_id: int, user_id: str):
-    """Get the latest advice for a specific diary"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-        
-        analysis = await connection_pool.fetchrow('''
-            SELECT id, analysis_key, advice, mood, mood_source, character_type, sign, created_at
-            FROM analyses 
-            WHERE diary_id = $1 AND user_id = $2
-            ORDER BY created_at DESC 
-            LIMIT 1
-        ''', diary_id, user_id)
-        
-        if analysis:
-            return {
-                "diary_id": diary_id,
-                "advice": analysis["advice"],
-                "mood": analysis["mood"],
-                "mood_source": analysis["mood_source"],
-                "character_type": analysis["character_type"],
-                "sign": analysis["sign"],
-                "analysis_date": analysis["created_at"].isoformat(),
-                "analysis_key": analysis["analysis_key"],
-                "has_advice": True
-            }
-        
-        # Check diary for preview
-        diary = await connection_pool.fetchrow('''
-            SELECT id, content, mood, mood_confidence, advice_preview, created_at
-            FROM user_diaries 
-            WHERE id = $1 AND user_id = $2
-        ''', diary_id, user_id)
-        
-        if diary and diary["advice_preview"]:
-            return {
-                "diary_id": diary_id,
-                "advice": diary["advice_preview"],
-                "mood": diary["mood"],
-                "mood_confidence": diary["mood_confidence"],
-                "analysis_date": diary["created_at"].isoformat(),
-                "has_advice": True,
-                "note": "Advice preview"
-            }
-        
-        return {
-            "diary_id": diary_id,
-            "advice": "",
-            "mood": None,
-            "has_advice": False,
-            "message": "No analysis found"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching diary advice: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch advice")
-
-@app.get("/analysis/history/{user_id}")
-async def get_analysis_history(user_id: str, limit: int = 10):
-    """Get previous analysis results for a user"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-        
-        analyses = await connection_pool.fetch('''
-            SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data, has_advice
-            FROM user_analyses 
-            WHERE user_id = $1 
-            ORDER BY created_at DESC 
-            LIMIT $2
-        ''', user_id, limit)
-        
-        result_analyses = []
-        for analysis in analyses:
-            analysis_data = analysis["analysis_data"] or {}
-            
-            result_analyses.append({
-                "id": analysis["id"],
-                "type": analysis["analysis_type"],
-                "advice": analysis["advice_text"],
-                "diaries_analyzed": analysis["diaries_analyzed"],
-                "date": analysis["created_at"].isoformat(),
-                "analysis_date": analysis["created_at"].isoformat(),
-                "mood": analysis_data.get("moods", [None])[0] if analysis_data.get("moods") else None,
-                "character_type": analysis_data.get("character_type"),
-                "sign": analysis_data.get("sign"),
-                "has_advice": analysis["has_advice"] if analysis["has_advice"] is not None else True
-            })
-        
-        return {
-            "analyses": result_analyses,
-            "total": len(result_analyses)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching analysis history: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch analysis history")
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -666,27 +670,34 @@ async def health_check():
         if connection_pool:
             async with connection_pool.acquire() as conn:
                 await conn.fetchval('SELECT 1')
-                diary_count = await conn.fetchval('SELECT COUNT(*) FROM user_diaries')
-                analysis_count = await conn.fetchval('SELECT COUNT(*) FROM analyses')
                 
-                # Check mood distribution
-                mood_stats = await conn.fetch('''
-                    SELECT mood, COUNT(*) as count 
-                    FROM user_diaries 
-                    WHERE mood IS NOT NULL 
-                    GROUP BY mood 
-                    ORDER BY count DESC
-                ''')
+                # Get table info
+                table_info = {}
+                tables = ["user_diaries", "analyses", "user_analyses"]
+                for table in tables:
+                    try:
+                        count = await conn.fetchval(f'SELECT COUNT(*) FROM {table}')
+                        table_info[table] = count
+                    except:
+                        table_info[table] = "table not found"
                 
+                # Try to get column info for analyses table
+                try:
+                    columns = await conn.fetch('''
+                        SELECT column_name, data_type 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'analyses'
+                    ''')
+                    column_list = [f"{col['column_name']} ({col['data_type']})" for col in columns]
+                except:
+                    column_list = ["unknown"]
+            
             return {
                 "status": "healthy",
                 "timestamp": datetime.utcnow().isoformat(),
                 "database": "connected",
-                "table_counts": {
-                    "user_diaries": diary_count,
-                    "analyses": analysis_count
-                },
-                "mood_stats": {row["mood"]: row["count"] for row in mood_stats},
+                "table_counts": table_info,
+                "analyses_columns": column_list,
                 "message": "Mentra Backend is running"
             }
         else:
@@ -711,5 +722,5 @@ if __name__ == "__main__":
         "app:app",
         host="0.0.0.0",
         port=port,
-        workers=2  # Reduced for better Gemini API usage
+        workers=2
     )
