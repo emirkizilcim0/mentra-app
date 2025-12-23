@@ -836,6 +836,12 @@ async def get_user_analyses(
         logger.error(f"Error fetching analyses: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch analyses")
 
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 @app.post("/analyses")
 async def save_analysis(analysis_data: dict):
     """Save an analysis result (for backward compatibility)"""
@@ -844,9 +850,10 @@ async def save_analysis(analysis_data: dict):
             raise HTTPException(status_code=500, detail="Database not configured")
         
         # Extract data with defaults
+        diary_id = safe_int(analysis_data.get("diary_id", 0))
         analysis_key = analysis_data.get("analysis_key", create_analysis_key(
             analysis_data.get("user_id", "unknown"), 
-            analysis_data.get("diary_id", 0)
+            diary_id
         ))
         
         # Check if analysis already exists
@@ -866,6 +873,7 @@ async def save_analysis(analysis_data: dict):
                  analysis_key)
         else:
             # Insert new
+            diary_id = safe_int(analysis_data.get("diary_id", 0))
             await connection_pool.execute('''
                 INSERT INTO analyses (
                     analysis_key, diary_id, user_id, advice, mood, 
@@ -874,7 +882,7 @@ async def save_analysis(analysis_data: dict):
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ''', 
                 analysis_key,
-                analysis_data.get("diary_id", 0),
+                diary_id,
                 analysis_data.get("user_id", "unknown"),
                 analysis_data.get("advice", ""),
                 analysis_data.get("mood", "Neutral"),
