@@ -72,13 +72,14 @@ async def get_analysis_history(user_id: str, limit: int = 10):
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
-        analyses = await connection_pool.fetch('''
+        limit = int(limit)
+        analyses = await connection_pool.fetch(f'''
             SELECT id, analysis_type, advice_text, diaries_analyzed, created_at, analysis_data, has_advice
             FROM user_analyses 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
-            LIMIT $2  # ← NO CAST
-        ''', user_id, limit)
+            LIMIT {limit}
+        ''', user_id)
         
         result_analyses = []
         for analysis in analyses:
@@ -136,11 +137,11 @@ async def migrate_database_schema(conn):
                 WHERE table_name = 'analyses'
             )
         ''')
-        await conn.execute("""
+        if analyses_exists:
+            await conn.execute("""
         ALTER TABLE analyses
         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
         """)
-        if analyses_exists:
             # Check if user_id column exists
             user_id_exists = await conn.fetchval('''
                 SELECT EXISTS (
@@ -273,18 +274,19 @@ async def create_missing_tables(conn):
     
     # Create analyses table if it doesn't exist (with new schema)
     await conn.execute('''
-        CREATE TABLE IF NOT EXISTS analyses (
-            id SERIAL PRIMARY KEY,
-            analysis_key VARCHAR(255) NOT NULL UNIQUE,
-            diary_id INTEGER NOT NULL DEFAULT 0,
-            user_id VARCHAR(255) NOT NULL,
-            advice TEXT NOT NULL,
-            mood VARCHAR(100),
-            mood_source VARCHAR(50),
-            character_type VARCHAR(100),
-            sign VARCHAR(100),
-            has_advice BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS analyses (
+    id SERIAL PRIMARY KEY,
+    analysis_key VARCHAR(255) NOT NULL UNIQUE,
+    diary_id INTEGER NOT NULL DEFAULT 0,
+    user_id VARCHAR(255) NOT NULL,
+    advice TEXT NOT NULL,
+    mood VARCHAR(100),
+    mood_source VARCHAR(50),
+    character_type VARCHAR(100),
+    sign VARCHAR(100),
+    has_advice BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     ''')
     
@@ -447,14 +449,15 @@ async def get_user_diaries(user_id: str, limit: int = 20):
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
+        limit = int(limit)
         # ✅ CORRECT: No cast for LIMIT parameter with asyncpg
-        diaries = await connection_pool.fetch('''
+        diaries = await connection_pool.fetch(f'''
             SELECT id, content, mood, mood_confidence, advice_preview, tags, created_at
             FROM user_diaries 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
-            LIMIT $2  
-        ''', user_id, limit)  # asyncpg will handle int→appropriate type
+            LIMIT {limit}
+        ''', user_id)  # asyncpg will handle int→appropriate type
         
         # Fetch analyses for each diary
         diary_list = []
@@ -543,14 +546,15 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             source = "specific_ids"
             
         else:
+            limit = int(request.diary_count)
             # FIXED: Add type cast for limit
-            diary_records = await connection_pool.fetch('''
+            diary_records = await connection_pool.fetch(f'''
                 SELECT id, content, mood, tags, created_at
                 FROM user_diaries 
                 WHERE user_id = $1 
                 ORDER BY created_at DESC 
-                LIMIT $2
-            ''', request.user_id, request.diary_count)
+                LIMIT {limit}
+            ''', request.user_id)
             
             diary_contents = [d["content"] for d in diary_records]
             source = "recent_db"
@@ -717,13 +721,22 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                 "analysis_keys": [resp["analysis_key"] for resp in analysis_responses],
                 "source": source
             }
+                        
+            analysis_data_json = json.dumps(analysis_data)
             
             await connection_pool.fetchval('''
-                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO user_analyses (
+                    user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice
+                )
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6)
                 RETURNING id
-            ''', request.user_id, f"diary_analysis_{source}", advice_text, 
-                 len(diary_contents), analysis_data, True)
+            ''', request.user_id,
+                 f"diary_analysis_{source}",
+                 advice_text,
+                 len(diary_contents),
+                 analysis_data_json,
+                 True)
+            
         
         return {
             "entries_analyzed": len(diary_contents),
@@ -771,24 +784,25 @@ async def get_user_analyses(
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
+        limit = int(limit)
         if diary_id:
-            analyses = await connection_pool.fetch('''
+            analyses = await connection_pool.fetch(f'''
                 SELECT id, analysis_key, diary_id, user_id, advice, mood, mood_source, 
                        character_type, sign, has_advice, created_at
                 FROM analyses 
                 WHERE user_id = $1 AND diary_id = $2
                 ORDER BY created_at DESC 
-                LIMIT $3  # ← NO CAST
-            ''', user_id, diary_id, limit)
+                LIMIT {limit}
+            ''', user_id, diary_id)
         else:
-            analyses = await connection_pool.fetch('''
+            analyses = await connection_pool.fetch(f'''
                 SELECT id, analysis_key, diary_id, user_id, advice, mood, mood_source, 
                        character_type, sign, has_advice, created_at
                 FROM analyses 
                 WHERE user_id = $1
                 ORDER BY created_at DESC 
-                LIMIT $2  # ← NO CAST
-            ''', user_id, limit)
+                LIMIT {limit}
+            ''', user_id)
         
         return {
             "analyses": [
