@@ -195,7 +195,7 @@ class DiaryAnalysisRequest(BaseModel):
 
 class AnalysisResponse(BaseModel):
     advice: str
-    mood: str
+    mood: Optional[str] = None
     status: str
     analysis_date: str
     diaries_analyzed: int
@@ -311,6 +311,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         
         # Get the mood from analysis_result
         mood = analysis_result.get("mood")
+        logger.info(f"Received mood from diary_service: {mood}")
         
         # Generate a unique diary_id
         diary_id = f"{request.user_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
@@ -355,15 +356,9 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
         advisor = get_psychologist()
         fallback_advice = advisor._get_fallback_advice(request.character_type, request.sign)
         
-        # Extract mood from fallback advice
-        fallback_mood = "Calm"  # Default if extraction fails
-        if fallback_advice.startswith("MOOD:"):
-            mood_part = fallback_advice.split("MOOD:")[1].split("\n")[0].strip()
-            mood_labels = ["Happy", "Sad", "Anxious", "Angry", "Calm", "Confused"]
-            for m in mood_labels:
-                if m.lower() == mood_part.lower():
-                    fallback_mood = m
-                    break
+        # Extract mood from fallback advice using the same method
+        fallback_mood = advisor._extract_mood_from_response(fallback_advice)
+        logger.info(f"Fallback mood extracted: {fallback_mood}")
         
         return {
             "advice": fallback_advice,

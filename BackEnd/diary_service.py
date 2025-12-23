@@ -63,78 +63,88 @@ class DiaryPsychologistAdvisor:
         """
 
     def analyze_diaries(self, diaries: List[str], character_type: str, sign: str, birth_map: str = None) -> Dict[str, Any]:
-            """Analyze user diaries and provide psychological advice"""
-            try:
-                if not diaries:
-                    return self._provide_general_advice(character_type, sign)
+        """Analyze user diaries and provide psychological advice"""
+        try:
+            if not diaries:
+                return self._provide_general_advice(character_type, sign)
 
-                # Prepare diary text (limit length to avoid token limits)
-                combined_diaries = self._prepare_diary_text(diaries)
-                
-                # FIRST, analyze the mood directly from the diary content
-                mood = self._analyze_mood_from_diaries(diaries)
+            # Prepare diary text (limit length to avoid token limits)
+            combined_diaries = self._prepare_diary_text(diaries)
+            
+            # FIRST, analyze the mood directly from the diary content
+            diary_mood = self._analyze_mood_from_diaries(diaries)
+            
+            # Log for debugging
+            logger.info(f"Diary mood analysis: {diary_mood}")
 
-                prompt = self.advice_prompt.format(
-                    diary_text=combined_diaries,
-                    character_type=character_type,
-                    sign=sign
-                )
+            prompt = self.advice_prompt.format(
+                diary_text=combined_diaries,
+                character_type=character_type,
+                sign=sign
+            )
 
-                # Generate content using the new SDK with system instruction
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config={
-                        "system_instruction": "You are a compassionate psychologist. You MUST start your response with 'MOOD: [mood]' where mood is chosen from: Happy, Sad, Anxious, Angry, Calm, Confused. The mood should reflect the user's diary content, not general advice.",
-                        "temperature": 0.7,
-                        "top_p": 0.9
-                    }
-                )
-
-                # Extract mood from the AI's response
-                ai_mood = self._extract_mood_from_response(response.text)
-                
-                # Use the AI's mood if it makes sense, otherwise use our diary analysis
-                final_mood = self._validate_mood(ai_mood, mood, response.text)
-                
-                advice_text = response.text
-
-                return {
-                    "mood": final_mood,
-                    "advice": advice_text,
-                    "analysis_date": datetime.utcnow().isoformat(),
-                    "diaries_analyzed": len(diaries),
-                    "model_used": self.model_name,
-                    "status": "success"
+            # Generate content using the new SDK with system instruction
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config={
+                    "system_instruction": "You are a compassionate psychologist. You MUST start your response with 'MOOD: [mood]' where mood is chosen from: Happy, Sad, Anxious, Angry, Calm, Confused. The mood should reflect the user's diary content, not general advice.",
+                    "temperature": 0.7,
+                    "top_p": 0.9
                 }
+            )
 
-            except Exception as e:
-                logger.error(f"Error analyzing diaries: {str(e)}")
-                return {
-                    "mood": "Calm",
-                    "advice": self._get_fallback_advice(character_type, sign),
-                    "analysis_date": datetime.utcnow().isoformat(),
-                    "diaries_analyzed": len(diaries) if diaries else 0,
-                    "status": "error",
-                    "error": str(e)
-                }
+            # Log the raw AI response for debugging
+            logger.info(f"Raw AI response (first 200 chars): {response.text[:200]}")
+            
+            # Extract mood from the AI's response
+            ai_mood = self._extract_mood_from_response(response.text)
+            logger.info(f"AI extracted mood: {ai_mood}")
+            
+            # Validate the mood
+            final_mood = self._validate_mood(ai_mood, diary_mood, response.text)
+            logger.info(f"Final mood after validation: {final_mood}")
+
+            return {
+                "mood": final_mood,
+                "advice": response.text,
+                "analysis_date": datetime.utcnow().isoformat(),
+                "diaries_analyzed": len(diaries),
+                "model_used": self.model_name,
+                "status": "success"
+            }
+
+        except Exception as e:
+            logger.error(f"Error analyzing diaries: {str(e)}")
+            # Get fallback advice
+            fallback_advice = self._get_fallback_advice(character_type, sign)
+            fallback_mood = self._extract_mood_from_response(fallback_advice)
+            
+            return {
+                "mood": fallback_mood,  # Extract from fallback, not hardcoded
+                "advice": fallback_advice,
+                "analysis_date": datetime.utcnow().isoformat(),
+                "diaries_analyzed": len(diaries) if diaries else 0,
+                "status": "error",
+                "error": str(e)
+            }
 
     def _analyze_mood_from_diaries(self, diaries: List[str]) -> str:
         """Analyze mood directly from diary content"""
         if not diaries:
-            return "Calm"
+            return ""  # Empty string, not "Calm"
         
         # Use the most recent diary for mood analysis
         latest_diary = diaries[-1].lower()
         
         # Define emotion keywords with weights
         emotion_keywords = {
-            "angry": ["angry", "mad", "furious", "rage", "pissed", "irritated", "annoyed", "hate", "frustrated"],
-            "sad": ["sad", "depressed", "unhappy", "miserable", "cry", "tears", "lonely", "heartbroken"],
-            "anxious": ["anxious", "worried", "nervous", "stressed", "panic", "afraid", "scared", "fear"],
-            "happy": ["happy", "joy", "excited", "glad", "pleased", "content", "delighted", "great"],
-            "confused": ["confused", "uncertain", "unsure", "doubt", "question", "perplexed", "bewildered"],
-            "calm": ["calm", "peaceful", "relaxed", "serene", "tranquil", "chill", "content"]
+            "Angry": ["angry", "mad", "furious", "rage", "pissed", "irritated", "annoyed", "hate", "frustrated"],
+            "Sad": ["sad", "depressed", "unhappy", "miserable", "cry", "tears", "lonely", "heartbroken"],
+            "Anxious": ["anxious", "worried", "nervous", "stressed", "panic", "afraid", "scared", "fear"],
+            "Happy": ["happy", "joy", "excited", "glad", "pleased", "content", "delighted", "great"],
+            "Confused": ["confused", "uncertain", "unsure", "doubt", "question", "perplexed", "bewildered"],
+            "Calm": ["calm", "peaceful", "relaxed", "serene", "tranquil", "chill"]
         }
         
         # Count occurrences of each emotion
@@ -147,9 +157,9 @@ class DiaryPsychologistAdvisor:
         
         # Also check for stronger emotional words
         strong_indicators = {
-            "angry": ["furious", "rage", "hate", "pissed"],
-            "sad": ["depressed", "heartbroken", "miserable"],
-            "anxious": ["panic", "terrified", "fearful"]
+            "Angry": ["furious", "rage", "hate", "pissed"],
+            "Sad": ["depressed", "heartbroken", "miserable"],
+            "Anxious": ["panic", "terrified", "fearful"]
         }
         
         for mood, strong_words in strong_indicators.items():
@@ -159,49 +169,74 @@ class DiaryPsychologistAdvisor:
         
         # Get the mood with highest score
         if max(mood_scores.values()) > 0:
-            return max(mood_scores, key=mood_scores.get)
+            detected_mood = max(mood_scores, key=mood_scores.get)
+            logger.info(f"Detected mood from diary content: {detected_mood} with score: {mood_scores[detected_mood]}")
+            return detected_mood
         
-        return "Calm"
+        logger.info("No clear mood detected from diary content")
+        return ""  # Empty string, not "Calm"
 
     def _extract_mood_from_response(self, response_text: str) -> str:
         """Extract mood label from the AI response"""
-        # Mood labels to look for
+        # Mood labels to look for (case-sensitive)
         mood_labels = ["Happy", "Sad", "Anxious", "Angry", "Calm", "Confused"]
+        
+        logger.info(f"Extracting mood from response (first 100 chars): {response_text[:100]}")
         
         # Check for structured mood format at the beginning
         lines = response_text.strip().split('\n')
-        if lines and lines[0].startswith('MOOD:'):
-            mood_part = lines[0].replace('MOOD:', '').strip()
-            for mood in mood_labels:
-                if mood.lower() == mood_part.lower():
+        
+        # Look for exact "MOOD: X" pattern
+        for line in lines[:3]:  # Check first 3 lines
+            line = line.strip()
+            logger.info(f"Checking line for mood: {line}")
+            
+            if line.startswith('MOOD:'):
+                mood_part = line.replace('MOOD:', '').strip()
+                logger.info(f"Found MOOD: pattern, mood part: '{mood_part}'")
+                
+                for mood in mood_labels:
+                    if mood.lower() == mood_part.lower():
+                        logger.info(f"Matched mood: {mood}")
+                        return mood
+        
+        # If no structured format found, search for mood labels in the text
+        response_lower = response_text.lower()
+        for mood in mood_labels:
+            if mood.lower() in response_lower:
+                # Check if it's mentioned in the beginning of response (more likely to be the mood classification)
+                first_paragraph = response_text[:200].lower()
+                if mood.lower() in first_paragraph:
+                    logger.info(f"Found mood '{mood}' in first paragraph")
                     return mood
         
-        # Check for mood in the first few lines
-        for line in lines[:3]:
-            line_lower = line.lower()
-            for mood in mood_labels:
-                if mood.lower() in line_lower and f"mood: {mood.lower()}" in line_lower:
-                    return mood
-        
-        # Default to "Calm" if no clear mood found
-        return "Calm"
-    
+        logger.warning(f"No mood found in response. Response text: {response_text[:200]}...")
+        return ""  # Empty string, not "Calm"
+
     def _validate_mood(self, ai_mood: str, diary_mood: str, response_text: str) -> str:
         """Validate that the AI's mood matches the diary content"""
-        # If AI says calm but diary analysis says angry, trust the diary
+        logger.info(f"Validating mood - AI mood: '{ai_mood}', Diary mood: '{diary_mood}'")
+        
+        # If AI returned empty mood, use diary analysis
+        if not ai_mood or ai_mood == "":
+            logger.info(f"AI returned empty mood, using diary mood: {diary_mood}")
+            return diary_mood if diary_mood else "Neutral"
+        
+        # If diary analysis says angry but AI says calm, trust diary
         if diary_mood == "Angry" and ai_mood == "Calm":
-            logger.warning(f"AI returned Calm but diary analysis says Angry. Using Angry.")
+            logger.warning(f"AI returned 'Calm' but diary analysis says 'Angry'. Using 'Angry'.")
             return "Angry"
         
         # Similarly for other strong emotions
         strong_emotions = ["Angry", "Sad", "Anxious"]
         if diary_mood in strong_emotions and ai_mood == "Calm":
-            logger.warning(f"AI returned Calm but diary analysis says {diary_mood}. Using {diary_mood}.")
+            logger.warning(f"AI returned 'Calm' but diary analysis says '{diary_mood}'. Using '{diary_mood}'.")
             return diary_mood
         
         # Otherwise, use AI's mood
+        logger.info(f"Using AI mood: {ai_mood}")
         return ai_mood
-    
+
     def _prepare_diary_text(self, diaries: List[str]) -> str:
         """Prepare diary text for analysis, limiting total length"""
         # Take only recent diaries and limit each entry length
@@ -216,7 +251,7 @@ class DiaryPsychologistAdvisor:
             prepared_entries.append(f"Entry {i}: {clean_diary}")
         
         return "\n\n".join(prepared_entries)
-    
+
     def _provide_general_advice(self, character_type: str, sign: str) -> Dict[str, Any]:
         """Provide general advice when no diaries are available"""
         try:
@@ -226,18 +261,22 @@ class DiaryPsychologistAdvisor:
             - Zodiac sign: {sign}
             
             This person hasn't written any diaries yet. 
-            Start your response with: MOOD: Calm
             
-            Then provide:
+            Please analyze their personality and provide:
             - Encouragement to start journaling and its benefits
             - General insights about their {character_type} personality type
             - Motivational guidance for self-reflection
+            - Start your response with MOOD: [choose appropriate mood based on their personality]
             - Keep it positive, supportive, and around 150-200 words
             """
             
             response = self.client.models.generate_content(
                 model=self.model_name,
-                contents=prompt
+                contents=prompt,
+                config={
+                    "system_instruction": "You are a compassionate psychologist. You MUST start your response with 'MOOD: [mood]' where mood is chosen from: Happy, Sad, Anxious, Angry, Calm, Confused, or Neutral. Choose based on typical state for their personality type.",
+                    "temperature": 0.7
+                }
             )
             
             mood = self._extract_mood_from_response(response.text)
@@ -252,17 +291,20 @@ class DiaryPsychologistAdvisor:
             }
         except Exception as e:
             logger.error(f"Error providing general advice: {e}")
+            fallback_advice = self._get_fallback_advice(character_type, sign)
+            fallback_mood = self._extract_mood_from_response(fallback_advice)
+            
             return {
-                "mood": "Calm",
-                "advice": self._get_fallback_advice(character_type, sign),
+                "mood": fallback_mood,  # Extract from fallback, not hardcoded
+                "advice": fallback_advice,
                 "analysis_date": datetime.utcnow().isoformat(),
                 "diaries_analyzed": 0,
                 "status": "success"
             }
-    
+
     def _get_fallback_advice(self, character_type: str, sign: str) -> str:
         """Provide fallback advice when AI service is unavailable"""
-        return f"""MOOD: Calm
+        return f"""MOOD: Neutral
 
 **Emotional Analysis:**
 Starting a journaling practice is the first step toward greater emotional awareness.
