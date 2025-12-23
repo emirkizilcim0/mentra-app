@@ -401,13 +401,21 @@ def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, st
     
     return "Neutral", "default"
 
-def create_analysis_key(user_id: str, diary_id: int = 0) -> str:
+def create_analysis_key(user_id: str, diary_id=0) -> str:
     """Create a guaranteed unique analysis key"""
     unique_id = uuid.uuid4().hex
-    if diary_id > 0:
-        return f"diary_{diary_id}_{unique_id}"
+
+    # ✅ Ensure diary_id is an int
+    try:
+        diary_id_int = int(diary_id)
+    except (TypeError, ValueError):
+        diary_id_int = 0
+
+    if diary_id_int > 0:
+        return f"diary_{diary_id_int}_{unique_id}"
     else:
         return f"user_{user_id}_{unique_id}"
+
 
 # ============== ENDPOINTS ==============
 
