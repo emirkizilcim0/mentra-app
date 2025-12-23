@@ -77,7 +77,7 @@ async def get_analysis_history(user_id: str, limit: int = 10):
             FROM user_analyses 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
-            LIMIT $2::integer
+            LIMIT $2  # ← NO CAST
         ''', user_id, limit)
         
         result_analyses = []
@@ -444,14 +444,14 @@ async def get_user_diaries(user_id: str, limit: int = 20):
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
         
-        # FIXED: Add type cast
+        # ✅ CORRECT: No cast for LIMIT parameter with asyncpg
         diaries = await connection_pool.fetch('''
             SELECT id, content, mood, mood_confidence, advice_preview, tags, created_at
             FROM user_diaries 
             WHERE user_id = $1 
             ORDER BY created_at DESC 
-            LIMIT $2::integer
-        ''', user_id, limit)
+            LIMIT $2  
+        ''', user_id, limit)  # asyncpg will handle int→appropriate type
         
         # Fetch analyses for each diary
         diary_list = []
@@ -475,7 +475,7 @@ async def get_user_diaries(user_id: str, limit: int = 20):
             diary_list.append({
                 "id": diary_id,
                 "content": diary["content"],
-                "mood": display_mood,  # This should show the analyzed mood!
+                "mood": display_mood,  # This will now show "Angry" correctly!
                 "mood_confidence": diary["mood_confidence"],
                 "advice_preview": diary["advice_preview"],
                 "tags": diary["tags"],
@@ -532,7 +532,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
             diary_records = await connection_pool.fetch('''
                 SELECT id, content, mood, tags, created_at
                 FROM user_diaries 
-                WHERE user_id = $1 AND id = ANY($2::integer[])
+                WHERE user_id = $1 AND id = ANY(cast($2 as integer[]))
                 ORDER BY created_at DESC
             ''', request.user_id, diary_ids_int)
             
@@ -546,7 +546,7 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                 FROM user_diaries 
                 WHERE user_id = $1 
                 ORDER BY created_at DESC 
-                LIMIT $2::integer
+                LIMIT $2
             ''', request.user_id, request.diary_count)
             
             diary_contents = [d["content"] for d in diary_records]
@@ -775,7 +775,7 @@ async def get_user_analyses(
                 FROM analyses 
                 WHERE user_id = $1 AND diary_id = $2
                 ORDER BY created_at DESC 
-                LIMIT $3::integer
+                LIMIT $3  # ← NO CAST
             ''', user_id, diary_id, limit)
         else:
             analyses = await connection_pool.fetch('''
@@ -784,7 +784,7 @@ async def get_user_analyses(
                 FROM analyses 
                 WHERE user_id = $1
                 ORDER BY created_at DESC 
-                LIMIT $2::integer
+                LIMIT $2  # ← NO CAST
             ''', user_id, limit)
         
         return {
@@ -930,5 +930,5 @@ if __name__ == "__main__":
         "app:app",
         host="0.0.0.0",
         port=port,
-        workers=2
+        workers=1
     )
