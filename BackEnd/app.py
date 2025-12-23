@@ -136,7 +136,10 @@ async def migrate_database_schema(conn):
                 WHERE table_name = 'analyses'
             )
         ''')
-        
+        await conn.execute("""
+        ALTER TABLE analyses
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        """)
         if analyses_exists:
             # Check if user_id column exists
             user_id_exists = await conn.fetchval('''
