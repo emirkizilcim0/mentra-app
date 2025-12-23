@@ -17,7 +17,10 @@ class DiaryRepoHistory {
         debugPrint('🔍 Fetching history from: $uri');
       }
 
-      final response = await DiaryConfig.client.get(uri, headers: DiaryConfig.getHeaders);
+      final response = await DiaryConfig.client.get(
+        uri,
+        headers: DiaryConfig.getHeaders,
+      );
 
       if (kDebugMode) {
         debugPrint('📡 Response status: ${response.statusCode}');
