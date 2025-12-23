@@ -62,7 +62,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<List<Map<String, dynamic>>> _fetchAnalysesFromAPI() async {
     try {
       final response = await http.get(
-        Uri.parse('https://mentra-app.onrender.com/analyses'),
+        Uri.parse('https://mentra-app-b2ei.onrender.com/analyses'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -105,7 +105,7 @@ class _ChatPageState extends State<ChatPage> {
       analysisData['has_advice'] = true;
 
       final response = await http.post(
-        Uri.parse('https://mentra-app.onrender.com/analyses'),
+        Uri.parse('https://mentra-app-b2ei.onrender.com/analyses'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

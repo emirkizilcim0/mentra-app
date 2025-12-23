@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'https://mentra-app.onrender.com';
+  static const String baseUrl = 'https://mentra-app-b2ei.onrender.com';
 
   // Fetch analyses for a specific user or all analyses
   static Future<List<Map<String, dynamic>>> fetchAnalyses({

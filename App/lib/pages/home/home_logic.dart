@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 class HomeLogic {
   static Future<String> sendToBackend() async {
-    const backendUrl = "https://mentra-app.onrender.com";
+    const backendUrl = "https://mentra-app-b2ei.onrender.com";
     try {
       final response = await http.post(
         Uri.parse(backendUrl),
