@@ -783,72 +783,62 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
 
 @app.get("/analyses")
 async def get_user_analyses(
-    user_id: Optional[str] = None,  # Make user_id optional
-    diary_id: Optional[int] = None, 
+    user_id: Optional[str] = None,
+    diary_id: Optional[int] = None,
     limit: int = 10
 ):
-    """Get analyses for a user or specific diary"""
     try:
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
-        
+
         limit = int(limit)
-        
-        # If no user_id provided, return error
-        if not user_id:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "MISSING_PARAMETER",
-                    "message": "user_id parameter is required",
-                    "example": "/analyses?user_id=USER_ID_HERE"
-                }
-            )
-        
-        if diary_id:
-            analyses = await connection_pool.fetch(f'''
-                SELECT id, analysis_key, diary_id, user_id, advice, mood, mood_source, 
-                       character_type, sign, has_advice, created_at
-                FROM analyses 
-                WHERE user_id = $1 AND diary_id = $2
-                ORDER BY created_at DESC 
-                LIMIT {limit}
-            ''', user_id, diary_id)
+
+        if user_id:
+            if diary_id:
+                analyses = await connection_pool.fetch(f'''
+                    SELECT *
+                    FROM analyses
+                    WHERE user_id = $1 AND diary_id = $2
+                    ORDER BY created_at DESC
+                    LIMIT {limit}
+                ''', user_id, diary_id)
+            else:
+                analyses = await connection_pool.fetch(f'''
+                    SELECT *
+                    FROM analyses
+                    WHERE user_id = $1
+                    ORDER BY created_at DESC
+                    LIMIT {limit}
+                ''', user_id)
         else:
+            # ✅ allow fetching all (for now)
             analyses = await connection_pool.fetch(f'''
-                SELECT id, analysis_key, diary_id, user_id, advice, mood, mood_source, 
-                       character_type, sign, has_advice, created_at
-                FROM analyses 
-                WHERE user_id = $1
-                ORDER BY created_at DESC 
+                SELECT *
+                FROM analyses
+                ORDER BY created_at DESC
                 LIMIT {limit}
-            ''', user_id)
-        
-        return {
-            "analyses": [
-                {
-                    "id": analysis["id"],
-                    "analysis_key": analysis["analysis_key"],
-                    "diary_id": analysis["diary_id"],
-                    "user_id": analysis["user_id"],
-                    "advice": analysis["advice"],
-                    "mood": analysis["mood"],
-                    "mood_source": analysis["mood_source"],
-                    "character_type": analysis["character_type"],
-                    "sign": analysis["sign"],
-                    "has_advice": analysis["has_advice"],
-                    "created_at": analysis["created_at"].isoformat()
-                }
-                for analysis in analyses
-            ],
-            "total": len(analyses),
-            "user_id": user_id
-        }
-        
-    except HTTPException:
-        raise
+            ''')
+
+        return [
+            {
+                "id": a["id"],
+                "analysis_key": a["analysis_key"],
+                "diary_id": a["diary_id"],
+                "user_id": a["user_id"],
+                "analysis": a["advice"],      # ✅ IMPORTANT (Flutter expects this)
+                "advice": a["advice"],
+                "mood": a["mood"],
+                "mood_source": a["mood_source"],
+                "character_type": a["character_type"],
+                "sign": a["sign"],
+                "has_advice": a["has_advice"],
+                "created_at": a["created_at"].isoformat()
+            }
+            for a in analyses
+        ]
+
     except Exception as e:
-        logger.error(f"Error fetching analyses: {e}")
+        logger.error(f"Error fetching analyses: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch analyses")
 
 def safe_int(value, default=0):
