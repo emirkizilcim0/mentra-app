@@ -223,7 +223,500 @@ async def create_missing_tables(conn):
     ''')
     
     logger.info("Ensured all tables exist")
-# Add this to your app.py after the existing endpoints
+
+async def create_indexes(conn):
+    """Create indexes if they don't exist"""
+    indexes = [
+        ("idx_user_diaries_user_id", "user_diaries", "user_id"),
+        ("idx_user_diaries_created_at", "user_diaries", "created_at"),
+        ("idx_analyses_diary_id", "analyses", "diary_id"),
+        ("idx_analyses_user_id", "analyses", "user_id"),
+        ("idx_analyses_analysis_key", "analyses", "analysis_key"),
+        ("idx_user_diaries_mood", "user_diaries", "mood"),
+    ]
+    
+    for index_name, table_name, column_name in indexes:
+        try:
+            await conn.execute(f'''
+                CREATE INDEX IF NOT EXISTS {index_name} 
+                ON {table_name} ({column_name});
+            ''')
+        except Exception as e:
+            logger.warning(f"Could not create index {index_name}: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        await create_db_pool()
+    except Exception as e:
+        logger.error(f"Failed to create database pool: {e}")
+        connection_pool = None
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if connection_pool:
+        await connection_pool.close()
+
+# ============== MODELS ==============
+class DiaryEntry(BaseModel):
+    content: str
+    mood: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class DiaryAnalysisRequest(BaseModel):
+    user_id: str
+    character_type: str
+    sign: str
+    birth_map: str
+    diary_count: Optional[int] = 10
+    diaries: Optional[List[str]] = None
+    diary_ids: Optional[List[int]] = None
+
+class IndividualDiaryAnalysis(BaseModel):
+    diary_index: int
+    source_diary_id: int
+    mood: str
+    mood_source: str
+    advice: str
+    analysis_date: str
+    status: str
+    analysis_key: str
+
+class MultipleDiaryAnalysisResponse(BaseModel):
+    entries_analyzed: int
+    results: List[IndividualDiaryAnalysis]
+
+# ============== HELPER FUNCTIONS ==============
+
+def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, str]:
+    """Detect mood from content with rule-based overrides."""
+    content_lower = content.lower()
+    
+    # Rule-based mood detection (takes priority)
+    # Add Turkish keywords since your diary is in Turkish
+    angry_keywords = ["angry", "mad", "furious", "rage", "irritated", "annoyed", 
+                     "upset", "hate", "frustrated", "cant stand", "pissed",
+                     "sinir", "kızgın", "öfke", "sinirliyim", "kızgınım"]  # Turkish added
+    
+    sad_keywords = ["sad", "depressed", "unhappy", "down", "miserable", "hopeless",
+                   "üzgün", "mutsuz", "depresif", "hüzünlü"]  # Turkish added
+    
+    anxious_keywords = ["anxious", "anxiety", "worried", "nervous", "stressed", "tense",
+                       "endişeli", "kaygılı", "stresli", "gergin"]  # Turkish added
+    
+    happy_keywords = ["happy", "joy", "excited", "great", "wonderful", "positive",
+                     "mutlu", "neşeli", "heyecanlı", "harika"]  # Turkish added
+    
+    calm_keywords = ["calm", "peaceful", "relaxed", "serene", "tranquil",
+                    "sakin", "huzurlu", "rahat"]  # Turkish added
+    
+    # Check rules in priority order
+    for keyword in angry_keywords:
+        if keyword in content_lower:
+            return "Angry", "content_override"
+    
+    for keyword in sad_keywords:
+        if keyword in content_lower:
+            return "Sad", "content_override"
+    
+    for keyword in anxious_keywords:
+        if keyword in content_lower:
+            return "Anxious", "content_override"
+    
+    for keyword in happy_keywords:
+        if keyword in content_lower:
+            return "Happy", "content_override"
+    
+    for keyword in calm_keywords:
+        if keyword in content_lower:
+            return "Calm", "content_override"
+    
+    # If no rule matches, use AI mood with fallback
+    if ai_mood and ai_mood != "Neutral":
+        return ai_mood, "ai_detected"
+    
+    return "Neutral", "default"
+
+def create_analysis_key(user_id: str, diary_id: int = 0) -> str:
+    """Create a guaranteed unique analysis key"""
+    unique_id = uuid.uuid4().hex
+    if diary_id > 0:
+        return f"diary_{diary_id}_{unique_id}"
+    else:
+        return f"user_{user_id}_{unique_id}"
+
+# ============== ENDPOINTS ==============
+
+@app.get("/")
+async def home():
+    return {
+        "message": "Mentra Backend is running!", 
+        "timestamp": datetime.utcnow().isoformat(),
+        "status": "healthy"
+    }
+
+@app.post("/diaries/save")
+async def save_diary(entry: DiaryEntry, user_id: str):
+    """Save a new diary entry for a user"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        diary_id = await connection_pool.fetchval('''
+            INSERT INTO user_diaries (user_id, content, mood, tags)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+        ''', user_id, entry.content, entry.mood, entry.tags if entry.tags else None)
+        
+        return {
+            "message": "Diary saved successfully",
+            "diary_id": diary_id,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving diary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save diary")
+
+@app.get("/diaries/{user_id}")
+async def get_user_diaries(user_id: str, limit: int = 20):
+    """Get recent diary entries for a user"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        # FIXED: Add type cast for limit parameter
+        diaries = await connection_pool.fetch('''
+            SELECT id, content, mood, mood_confidence, advice_preview, tags, created_at
+            FROM user_diaries 
+            WHERE user_id = $1 
+            ORDER BY created_at DESC 
+            LIMIT $2::integer
+        ''', user_id, limit)
+        
+        # Fetch latest analysis for each diary to get accurate mood
+        diary_list = []
+        for diary in diaries:
+            diary_id = diary["id"]
+            
+            # Get latest analysis for this diary
+            analysis = await connection_pool.fetchrow('''
+                SELECT mood, mood_source, advice, created_at
+                FROM analyses 
+                WHERE user_id = $1 AND diary_id = $2
+                ORDER BY created_at DESC 
+                LIMIT 1
+            ''', user_id, diary_id)
+            
+            # Use analysis mood if available, otherwise use diary mood
+            display_mood = diary["mood"]
+            mood_source = "diary"
+            advice = diary["advice_preview"]
+            
+            if analysis:
+                display_mood = analysis["mood"] or diary["mood"]
+                mood_source = analysis["mood_source"] or "diary"
+                # Get first 200 chars of advice
+                if analysis["advice"]:
+                    advice = analysis["advice"][:200] + "..." if len(analysis["advice"]) > 200 else analysis["advice"]
+            
+            diary_list.append({
+                "id": diary_id,
+                "content": diary["content"],
+                "mood": display_mood,  # This should now show the analyzed mood!
+                "mood_confidence": diary["mood_confidence"],
+                "mood_source": mood_source,
+                "advice_preview": advice,
+                "tags": diary["tags"],
+                "date": diary["created_at"].isoformat(),
+                "has_analysis": bool(analysis)
+            })
+        
+        return {
+            "diaries": diary_list,
+            "total": len(diary_list)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching diaries: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch diaries")
+
+@app.post("/analyze/diaries")
+async def analyze_diaries(request: DiaryAnalysisRequest):
+    """Analyze user diaries and provide psychological advice"""
+    try:
+        if not connection_pool:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        diary_contents = []
+        diary_records = []
+        source = "unknown"
+        
+        # Determine source of diaries
+        if request.diaries and len(request.diaries) > 0:
+            diary_contents = request.diaries
+            source = "request_content"
+            for i, content in enumerate(diary_contents):
+                diary_records.append({
+                    "id": f"request_{i}",
+                    "content": content,
+                    "mood": None,
+                    "tags": None,
+                    "created_at": datetime.utcnow()
+                })
+                
+        elif request.diary_ids and len(request.diary_ids) > 0:
+            diary_ids_int = [int(did) for did in request.diary_ids if str(did).isdigit()]
+            if not diary_ids_int:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "INVALID_DIARY_IDS",
+                        "message": "Invalid diary IDs provided.",
+                        "provided_ids": request.diary_ids
+                    }
+                )
+            
+            # FIXED: Add type cast for array parameter
+            diary_records = await connection_pool.fetch('''
+                SELECT id, content, mood, tags, created_at
+                FROM user_diaries 
+                WHERE user_id = $1 AND id = ANY($2::integer[])
+                ORDER BY created_at DESC
+            ''', request.user_id, diary_ids_int)
+            
+            diary_contents = [d["content"] for d in diary_records]
+            source = "specific_ids"
+            
+        else:
+            # FIXED: Add type cast for limit parameter
+            diary_records = await connection_pool.fetch('''
+                SELECT id, content, mood, tags, created_at
+                FROM user_diaries 
+                WHERE user_id = $1 
+                ORDER BY created_at DESC 
+                LIMIT $2::integer
+            ''', request.user_id, request.diary_count)
+            
+            diary_contents = [d["content"] for d in diary_records]
+            source = "recent_db"
+        
+        # Validate we have diaries to analyze
+        if not diary_contents:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "NO_DIARIES_FOUND",
+                    "message": "No diaries found to analyze.",
+                    "user_id": request.user_id,
+                    "source": source
+                }
+            )
+        
+        logger.info(f"Analyzing {len(diary_contents)} diaries from source: {source}")
+        
+        # Get analysis from AI
+        advisor = get_psychologist()
+        analysis_result = advisor.analyze_diaries(
+            diaries=diary_contents,
+            character_type=request.character_type,
+            sign=request.sign,
+            birth_map=request.birth_map
+        )
+
+        # Process results - handle both old and new response formats
+        analysis_responses = []
+        
+        if "results" in analysis_result:
+            # NEW FORMAT: Individual diary results
+            results = analysis_result.get("results", [])
+            
+            if len(results) != len(diary_records):
+                logger.warning(f"Result count mismatch: {len(results)} != {len(diary_records)}")
+            
+            for idx in range(len(diary_records)):
+                diary_record = diary_records[idx]
+                
+                # Get result for this diary (or fallback)
+                result = results[idx] if idx < len(results) else {
+                    "mood": "Neutral",
+                    "advice": "",
+                    "analysis_date": datetime.utcnow().isoformat()
+                }
+                
+                ai_mood = result.get("mood", "Neutral")
+                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
+                
+                # Create analysis key
+                analysis_key = create_analysis_key(
+                    request.user_id, 
+                    diary_record["id"] if source != "request_content" else 0
+                )
+                
+                advice_text = result["advice"]
+                
+                # Save to database for real diaries
+                if connection_pool and source != "request_content":
+                    diary_id = diary_record["id"]
+                    
+                    # Insert into analyses table
+                    await connection_pool.execute('''
+                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ''', analysis_key, diary_id, request.user_id, advice_text, 
+                         final_mood, mood_source, request.character_type, 
+                         request.sign, True)
+                    
+                    # Update the diary
+                    advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
+                    mood_confidence = "high" if mood_source == "content_override" else "medium"
+                    
+                    await connection_pool.execute('''
+                        UPDATE user_diaries 
+                        SET mood = $1, 
+                            mood_confidence = $2,
+                            advice_preview = $3,
+                            updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = $4 AND user_id = $5
+                    ''', final_mood, mood_confidence, advice_preview, diary_id, request.user_id)
+                    
+                    # Debug logging
+                    logger.info(f"✅ Updated diary {diary_id}: mood={final_mood}, confidence={mood_confidence}")
+                    
+                    # Verify the update worked
+                    updated_diary = await connection_pool.fetchrow('''
+                        SELECT mood, mood_confidence, advice_preview 
+                        FROM user_diaries 
+                        WHERE id = $1
+                    ''', diary_id)
+                    if updated_diary:
+                        logger.info(f"✅ Verified update: mood={updated_diary['mood']}, confidence={updated_diary['mood_confidence']}")
+                
+                analysis_responses.append({
+                    "diary_index": idx + 1,
+                    "source_diary_id": diary_record["id"] if source != "request_content" else 0,
+                    "mood": final_mood,
+                    "mood_source": mood_source,
+                    "advice": advice_text,
+                    "analysis_date": result.get("analysis_date", datetime.utcnow().isoformat()),
+                    "status": result.get("status", "success"),
+                    "analysis_key": analysis_key,
+                    "source": source,
+                    "advice_saved": source != "request_content"
+                })
+        else:
+            # OLD FORMAT: Single analysis for all diaries
+            ai_mood = analysis_result.get("mood", "Neutral")
+            advice_text = analysis_result["advice"]
+            
+            # Apply rule-based detection to each diary
+            for idx, diary_record in enumerate(diary_records):
+                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
+                
+                # Create analysis key
+                analysis_key = create_analysis_key(
+                    request.user_id, 
+                    diary_record["id"] if source != "request_content" else 0
+                )
+                
+                analysis_responses.append({
+                    "diary_index": idx + 1,
+                    "source_diary_id": diary_record["id"] if source != "request_content" else 0,
+                    "mood": final_mood,
+                    "mood_source": mood_source,
+                    "advice": advice_text,
+                    "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat()),
+                    "status": analysis_result.get("status", "success"),
+                    "analysis_key": analysis_key,
+                    "source": source,
+                    "advice_saved": source != "request_content"
+                })
+                
+                # Save to database for real diaries
+                if connection_pool and source != "request_content" and diary_record["id"] != "request_0":
+                    diary_id = diary_record["id"]
+                    
+                    # Insert analysis
+                    await connection_pool.execute('''
+                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ''', analysis_key, diary_id, request.user_id, advice_text, 
+                         final_mood, mood_source, request.character_type, 
+                         request.sign, True)
+                    
+                    # Update diary
+                    advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
+                    mood_confidence = "high" if mood_source == "content_override" else "medium"
+                    
+                    await connection_pool.execute('''
+                        UPDATE user_diaries 
+                        SET mood = $1, 
+                            mood_confidence = $2,
+                            advice_preview = $3,
+                            updated_at = CURRENT_TIMESTAMP 
+                        WHERE id = $4 AND user_id = $5
+                    ''', final_mood, mood_confidence, advice_preview, diary_id, request.user_id)
+                    
+                    # Debug logging
+                    logger.info(f"✅ Updated diary {diary_id}: mood={final_mood}, confidence={mood_confidence}")
+        
+        # Save summary to user_analyses for real diaries
+        if connection_pool and source != "request_content" and analysis_responses:
+            summary_result = analysis_responses[0]
+            
+            analysis_data = {
+                "character_type": request.character_type,
+                "sign": request.sign,
+                "birth_map": request.birth_map,
+                "moods": [resp["mood"] for resp in analysis_responses],
+                "mood_sources": [resp["mood_source"] for resp in analysis_responses],
+                "has_advice": True,
+                "individual_analyses": len(analysis_responses),
+                "source_diary_ids": [d["id"] for d in diary_records if isinstance(d["id"], int)],
+                "analysis_keys": [resp["analysis_key"] for resp in analysis_responses],
+                "source": source
+            }
+            
+            await connection_pool.fetchval('''
+                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id
+            ''', request.user_id, f"diary_analysis_{source}", advice_text, 
+                 len(diary_contents), analysis_data, True)
+        
+        return {
+            "entries_analyzed": len(diary_contents),
+            "results": analysis_responses,
+            "status": "success",
+            "diaries_analyzed": len(diary_contents),
+            "source": source,
+            "advice_saved": source != "request_content",
+            "message": f"Successfully analyzed {len(diary_contents)} diaries",
+            "mood_corrections": sum(1 for r in analysis_responses if r["mood_source"] == "content_override")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing diaries: {e}", exc_info=True)
+        
+        advisor = get_psychologist()
+        fallback_advice = advisor._get_fallback_advice(
+            request.character_type, request.sign
+        )
+        fallback_mood = advisor._extract_mood_from_response(fallback_advice)
+        
+        return {
+            "advice": fallback_advice,
+            "mood": fallback_mood,
+            "status": "success",
+            "analysis_date": datetime.utcnow().isoformat(),
+            "diaries_analyzed": 0,
+            "has_advice": True,
+            "warning": "Used fallback analysis"
+        }
+
+# ============== NEW /analyses ENDPOINTS ==============
 
 @app.get("/analyses")
 async def get_user_analyses(
@@ -243,7 +736,7 @@ async def get_user_analyses(
                 FROM analyses 
                 WHERE user_id = $1 AND diary_id = $2
                 ORDER BY created_at DESC 
-                LIMIT $3
+                LIMIT $3::integer
             ''', user_id, diary_id, limit)
         else:
             analyses = await connection_pool.fetch('''
@@ -252,7 +745,7 @@ async def get_user_analyses(
                 FROM analyses 
                 WHERE user_id = $1
                 ORDER BY created_at DESC 
-                LIMIT $2
+                LIMIT $2::integer
             ''', user_id, limit)
         
         return {
@@ -337,478 +830,6 @@ async def save_analysis(analysis_data: dict):
     except Exception as e:
         logger.error(f"Error saving analysis: {e}")
         raise HTTPException(status_code=500, detail="Failed to save analysis")
-
-async def create_indexes(conn):
-    """Create indexes if they don't exist"""
-    indexes = [
-        ("idx_user_diaries_user_id", "user_diaries", "user_id"),
-        ("idx_user_diaries_created_at", "user_diaries", "created_at"),
-        ("idx_analyses_diary_id", "analyses", "diary_id"),
-        ("idx_analyses_user_id", "analyses", "user_id"),
-        ("idx_analyses_analysis_key", "analyses", "analysis_key"),
-        ("idx_user_diaries_mood", "user_diaries", "mood"),
-    ]
-    
-    for index_name, table_name, column_name in indexes:
-        try:
-            await conn.execute(f'''
-                CREATE INDEX IF NOT EXISTS {index_name} 
-                ON {table_name} ({column_name});
-            ''')
-        except Exception as e:
-            logger.warning(f"Could not create index {index_name}: {e}")
-
-@app.on_event("startup")
-async def startup_event():
-    try:
-        await create_db_pool()
-    except Exception as e:
-        logger.error(f"Failed to create database pool: {e}")
-        connection_pool = None
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if connection_pool:
-        await connection_pool.close()
-
-# ============== MODELS ==============
-class DiaryEntry(BaseModel):
-    content: str
-    mood: Optional[str] = None
-    tags: Optional[List[str]] = None
-
-class DiaryAnalysisRequest(BaseModel):
-    user_id: str
-    character_type: str
-    sign: str
-    birth_map: str
-    diary_count: Optional[int] = 10
-    diaries: Optional[List[str]] = None
-    diary_ids: Optional[List[int]] = None
-
-class IndividualDiaryAnalysis(BaseModel):
-    diary_index: int
-    source_diary_id: int
-    mood: str
-    mood_source: str
-    advice: str
-    analysis_date: str
-    status: str
-    analysis_key: str
-
-class MultipleDiaryAnalysisResponse(BaseModel):
-    entries_analyzed: int
-    results: List[IndividualDiaryAnalysis]
-
-# ============== HELPER FUNCTIONS ==============
-
-def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, str]:
-    """Detect mood from content with rule-based overrides."""
-    content_lower = content.lower()
-    
-    # Rule-based mood detection (takes priority)
-    angry_keywords = ["angry", "mad", "furious", "rage", "irritated", "annoyed", 
-                     "upset", "hate", "frustrated", "cant stand", "pissed"]
-    sad_keywords = ["sad", "depressed", "unhappy", "down", "miserable", "hopeless"]
-    anxious_keywords = ["anxious", "anxiety", "worried", "nervous", "stressed", "tense"]
-    happy_keywords = ["happy", "joy", "excited", "great", "wonderful", "positive"]
-    calm_keywords = ["calm", "peaceful", "relaxed", "serene", "tranquil"]
-    
-    # Check rules in priority order
-    for keyword in angry_keywords:
-        if keyword in content_lower:
-            return "Angry", "content_override"
-    
-    for keyword in sad_keywords:
-        if keyword in content_lower:
-            return "Sad", "content_override"
-    
-    for keyword in anxious_keywords:
-        if keyword in content_lower:
-            return "Anxious", "content_override"
-    
-    for keyword in happy_keywords:
-        if keyword in content_lower:
-            return "Happy", "content_override"
-    
-    for keyword in calm_keywords:
-        if keyword in content_lower:
-            return "Calm", "content_override"
-    
-    # If no rule matches, use AI mood with fallback
-    if ai_mood and ai_mood != "Neutral":
-        return ai_mood, "ai_detected"
-    
-    return "Neutral", "default"
-
-def create_analysis_key(user_id: str, diary_id: int = 0) -> str:
-    """Create a guaranteed unique analysis key"""
-    unique_id = uuid.uuid4().hex
-    if diary_id > 0:
-        return f"diary_{diary_id}_{unique_id}"
-    else:
-        return f"user_{user_id}_{unique_id}"
-
-# ============== ENDPOINTS ==============
-
-@app.get("/")
-async def home():
-    return {
-        "message": "Mentra Backend is running!", 
-        "timestamp": datetime.utcnow().isoformat(),
-        "status": "healthy"
-    }
-
-@app.post("/diaries/save")
-async def save_diary(entry: DiaryEntry, user_id: str):
-    """Save a new diary entry for a user"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-        
-        diary_id = await connection_pool.fetchval('''
-            INSERT INTO user_diaries (user_id, content, mood, tags)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id
-        ''', user_id, entry.content, entry.mood, entry.tags if entry.tags else None)
-        
-        return {
-            "message": "Diary saved successfully",
-            "diary_id": diary_id,
-            "status": "success"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error saving diary: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save diary")
-
-@app.get("/diaries/{user_id}")
-async def get_user_diaries(user_id: str, limit: int = 20):
-    """Get recent diary entries for a user"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-        
-        # Fetch diaries
-        diaries = await connection_pool.fetch('''
-            SELECT id, content, mood, mood_confidence, advice_preview, tags, created_at
-            FROM user_diaries 
-            WHERE user_id = $1 
-            ORDER BY created_at DESC 
-            LIMIT $2
-        ''', user_id, limit)
-        
-        # Fetch latest analysis for each diary
-        diary_list = []
-        for diary in diaries:
-            diary_id = diary["id"]
-            
-            # Get latest analysis for this diary
-            analysis = await connection_pool.fetchrow('''
-                SELECT mood, mood_source, advice, created_at
-                FROM analyses 
-                WHERE user_id = $1 AND diary_id = $2
-                ORDER BY created_at DESC 
-                LIMIT 1
-            ''', user_id, diary_id)
-            
-            # Use analysis mood if available, otherwise use diary mood
-            display_mood = diary["mood"]
-            mood_source = "diary"
-            advice = diary["advice_preview"]
-            
-            if analysis:
-                display_mood = analysis["mood"] or diary["mood"]
-                mood_source = analysis["mood_source"] or "diary"
-                advice = analysis["advice"][:200] + "..." if len(analysis["advice"]) > 200 else analysis["advice"]
-            
-            diary_list.append({
-                "id": diary_id,
-                "content": diary["content"],
-                "mood": display_mood,  # This should now show the analyzed mood!
-                "mood_confidence": diary["mood_confidence"],
-                "mood_source": mood_source,
-                "advice_preview": advice,
-                "tags": diary["tags"],
-                "date": diary["created_at"].isoformat(),
-                "has_analysis": bool(analysis)
-            })
-        
-        return {
-            "diaries": diary_list,
-            "total": len(diary_list)
-        }
-        
-    except Exception as e:
-        logger.error(f"Error fetching diaries: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch diaries")
-
-@app.post("/analyze/diaries")
-async def analyze_diaries(request: DiaryAnalysisRequest):
-    """Analyze user diaries and provide psychological advice"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-        
-        diary_contents = []
-        diary_records = []
-        source = "unknown"
-        
-        # Determine source of diaries
-        if request.diaries and len(request.diaries) > 0:
-            diary_contents = request.diaries
-            source = "request_content"
-            for i, content in enumerate(diary_contents):
-                diary_records.append({
-                    "id": f"request_{i}",
-                    "content": content,
-                    "mood": None,
-                    "tags": None,
-                    "created_at": datetime.utcnow()
-                })
-                
-        elif request.diary_ids and len(request.diary_ids) > 0:
-            diary_ids_int = [int(did) for did in request.diary_ids if str(did).isdigit()]
-            if not diary_ids_int:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "INVALID_DIARY_IDS",
-                        "message": "Invalid diary IDs provided.",
-                        "provided_ids": request.diary_ids
-                    }
-                )
-            
-            diary_records = await connection_pool.fetch('''
-                SELECT id, content, mood, tags, created_at
-                FROM user_diaries 
-                WHERE user_id = $1 AND id = ANY($2)
-                ORDER BY created_at DESC
-            ''', request.user_id, diary_ids_int)
-            
-            diary_contents = [d["content"] for d in diary_records]
-            source = "specific_ids"
-            
-        else:
-            diary_records = await connection_pool.fetch('''
-                SELECT id, content, mood, tags, created_at
-                FROM user_diaries 
-                WHERE user_id = $1 
-                ORDER BY created_at DESC 
-                LIMIT $2
-            ''', request.user_id, request.diary_count)
-            
-            diary_contents = [d["content"] for d in diary_records]
-            source = "recent_db"
-        
-        # Validate we have diaries to analyze
-        if not diary_contents:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "NO_DIARIES_FOUND",
-                    "message": "No diaries found to analyze.",
-                    "user_id": request.user_id,
-                    "source": source
-                }
-            )
-        
-        logger.info(f"Analyzing {len(diary_contents)} diaries from source: {source}")
-        
-        # Get analysis from AI
-        advisor = get_psychologist()
-        analysis_result = advisor.analyze_diaries(
-            diaries=diary_contents,
-            character_type=request.character_type,
-            sign=request.sign,
-            birth_map=request.birth_map
-        )
-
-        # Process results - handle both old and new response formats
-        analysis_responses = []
-        
-        if "results" in analysis_result:
-            # NEW FORMAT: Individual diary results
-            results = analysis_result.get("results", [])
-            
-            if len(results) != len(diary_records):
-                logger.warning(f"Result count mismatch: {len(results)} != {len(diary_records)}")
-            
-            for idx in range(len(diary_records)):
-                diary_record = diary_records[idx]
-                
-                # Get result for this diary (or fallback)
-                result = results[idx] if idx < len(results) else {
-                    "mood": "Neutral",
-                    "advice": "",
-                    "analysis_date": datetime.utcnow().isoformat()
-                }
-                
-                ai_mood = result.get("mood", "Neutral")
-                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
-                
-                # Create analysis key
-                analysis_key = create_analysis_key(
-                    request.user_id, 
-                    diary_record["id"] if source != "request_content" else 0
-                )
-                
-                advice_text = result["advice"]
-                
-                # Save to database for real diaries
-                if connection_pool and source != "request_content":
-                    diary_id = diary_record["id"]
-                    
-                    # Insert into analyses table
-                    await connection_pool.execute('''
-                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    ''', analysis_key, diary_id, request.user_id, advice_text, 
-                         final_mood, mood_source, request.character_type, 
-                         request.sign, True)
-                    
-                    # Update the diary
-                    advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
-                    mood_confidence = "high" if mood_source == "content_override" else "medium"
-                    
-                    await connection_pool.execute('''
-                        UPDATE user_diaries 
-                        SET mood = $1, 
-                            mood_confidence = $2,
-                            advice_preview = $3,
-                            updated_at = CURRENT_TIMESTAMP 
-                        WHERE id = $4 AND user_id = $5
-                    ''', final_mood, mood_confidence, advice_preview, diary_id, request.user_id)
-                
-                analysis_responses.append({
-                    "diary_index": idx + 1,
-                    "source_diary_id": diary_record["id"] if source != "request_content" else 0,
-                    "mood": final_mood,
-                    "mood_source": mood_source,
-                    "advice": advice_text,
-                    "analysis_date": result.get("analysis_date", datetime.utcnow().isoformat()),
-                    "status": result.get("status", "success"),
-                    "analysis_key": analysis_key,
-                    "source": source,
-                    "advice_saved": source != "request_content"
-                })
-        else:
-            # OLD FORMAT: Single analysis for all diaries
-            ai_mood = analysis_result.get("mood", "Neutral")
-            advice_text = analysis_result["advice"]
-            
-            # Apply rule-based detection to each diary
-            for idx, diary_record in enumerate(diary_records):
-                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
-                
-                # Create analysis key
-                analysis_key = create_analysis_key(
-                    request.user_id, 
-                    diary_record["id"] if source != "request_content" else 0
-                )
-                
-                analysis_responses.append({
-                    "diary_index": idx + 1,
-                    "source_diary_id": diary_record["id"] if source != "request_content" else 0,
-                    "mood": final_mood,
-                    "mood_source": mood_source,
-                    "advice": advice_text,
-                    "analysis_date": analysis_result.get("analysis_date", datetime.utcnow().isoformat()),
-                    "status": analysis_result.get("status", "success"),
-                    "analysis_key": analysis_key,
-                    "source": source,
-                    "advice_saved": source != "request_content"
-                })
-                
-                # Save to database for real diaries
-                if connection_pool and source != "request_content" and diary_record["id"] != "request_0":
-                    diary_id = diary_record["id"]
-                    
-                    # Insert analysis
-                    await connection_pool.execute('''
-                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    ''', analysis_key, diary_id, request.user_id, advice_text, 
-                         final_mood, mood_source, request.character_type, 
-                         request.sign, True)
-                    
-                    # Update diary
-                    advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
-                    mood_confidence = "high" if mood_source == "content_override" else "medium"
-                    
-                    await connection_pool.execute('''
-                        UPDATE user_diaries 
-                        SET mood = $1, 
-                            mood_confidence = $2,
-                            advice_preview = $3,
-                            updated_at = CURRENT_TIMESTAMP 
-                        WHERE id = $4 AND user_id = $5
-                    ''', final_mood, mood_confidence, advice_preview, diary_id, request.user_id)
-        
-        # Save summary to user_analyses for real diaries
-        if connection_pool and source != "request_content" and analysis_responses:
-            summary_result = analysis_responses[0]
-            
-            analysis_data = {
-                "character_type": request.character_type,
-                "sign": request.sign,
-                "birth_map": request.birth_map,
-                "moods": [resp["mood"] for resp in analysis_responses],
-                "mood_sources": [resp["mood_source"] for resp in analysis_responses],
-                "has_advice": True,
-                "individual_analyses": len(analysis_responses),
-                "source_diary_ids": [d["id"] for d in diary_records if isinstance(d["id"], int)],
-                "analysis_keys": [resp["analysis_key"] for resp in analysis_responses],
-                "source": source
-            }
-            
-            await connection_pool.fetchval('''
-                INSERT INTO user_analyses (user_id, analysis_type, advice_text, diaries_analyzed, analysis_data, has_advice)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id
-            ''', request.user_id, f"diary_analysis_{source}", advice_text, 
-                 len(diary_contents), analysis_data, True)
-        # Add this right after updating user_diaries in the /analyze/diaries endpoint
-        logger.info(f"✅ Updated diary {diary_id}: mood={final_mood}, confidence={mood_confidence}")
-
-        # Verify the update worked
-        updated_diary = await connection_pool.fetchrow('''
-            SELECT mood, mood_confidence, advice_preview 
-            FROM user_diaries 
-            WHERE id = $1
-        ''', diary_id)
-        logger.info(f"✅ Verified update: mood={updated_diary['mood']}, confidence={updated_diary['mood_confidence']}")
-        return {
-            "entries_analyzed": len(diary_contents),
-            "results": analysis_responses,
-            "status": "success",
-            "diaries_analyzed": len(diary_contents),
-            "source": source,
-            "advice_saved": source != "request_content",
-            "message": f"Successfully analyzed {len(diary_contents)} diaries",
-            "mood_corrections": sum(1 for r in analysis_responses if r["mood_source"] == "content_override")
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error analyzing diaries: {e}", exc_info=True)
-        
-        advisor = get_psychologist()
-        fallback_advice = advisor._get_fallback_advice(
-            request.character_type, request.sign
-        )
-        fallback_mood = advisor._extract_mood_from_response(fallback_advice)
-        
-        return {
-            "advice": fallback_advice,
-            "mood": fallback_mood,
-            "status": "success",
-            "analysis_date": datetime.utcnow().isoformat(),
-            "diaries_analyzed": 0,
-            "has_advice": True,
-            "warning": "Used fallback analysis"
-        }
 
 # ============== OTHER ENDPOINTS ==============
 
