@@ -804,9 +804,48 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
             "warning": "Used fallback analysis"
         }
 
-# ============== MISSING /analyses ENDPOINTS ==============
-# Your logs show 404 for /analyses, so add these:
-
+@app.get("/user/current")
+async def get_current_user(user_id: Optional[str] = None):
+    """
+    Get or create a user. Since there's no auth, we use the provided user_id
+    or create a new one.
+    """
+    try:
+        if not user_id:
+            # Create a new user ID
+            user_id = f"user_{datetime.utcnow().timestamp()}"
+        
+        # Check if user exists in any table
+        user_exists = False
+        if connection_pool:
+            # Check in analyses table
+            analysis_count = await connection_pool.fetchval(
+                'SELECT COUNT(*) FROM analyses WHERE user_id = $1',
+                user_id
+            )
+            
+            # Check in user_diaries table
+            diary_count = await connection_pool.fetchval(
+                'SELECT COUNT(*) FROM user_diaries WHERE user_id = $1',
+                user_id
+            )
+            
+            user_exists = (analysis_count > 0) or (diary_count > 0)
+        
+        return {
+            "id": user_id,
+            "user_id": user_id,
+            "name": "User",
+            "type": "User",
+            "sign": "Unknown",
+            "birth_map": "Unknown",
+            "exists": user_exists,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in get_current_user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user info")
 @app.get("/analyses")
 async def get_user_analyses(
     user_id: Optional[str] = None,
