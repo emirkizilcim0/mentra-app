@@ -20,17 +20,49 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
   final MoodRepository _repo = MoodRepository();
   late Future<List<MoodData>> _future;
   MoodRange _range = MoodRange.week;
+  bool _isLoading = true;
+  bool _hasRealData = false;
+  int _dataCount = 0;
 
   @override
   void initState() {
     super.initState();
+    print('📊 MoodGraphPage initialized');
     _load();
   }
 
   void _load() {
     setState(() {
-      _future = _repo.fetchMoodTrend(_range);
+      _isLoading = true;
     });
+
+    print('🔄 Loading mood data for range: $_range');
+    _future = _repo
+        .fetchMoodTrend(_range)
+        .then((data) {
+          print('✅ Loaded ${data.length} mood data points');
+
+          // Check if we have real data (not sample)
+          _hasRealData = data.any(
+            (mood) =>
+                !mood.advice.contains('Sample') &&
+                !mood.advice.contains('No analysis'),
+          );
+          _dataCount = data.length;
+
+          setState(() {
+            _isLoading = false;
+          });
+
+          return data;
+        })
+        .catchError((error) {
+          print('❌ Error loading mood data: $error');
+          setState(() {
+            _isLoading = false;
+          });
+          return <MoodData>[];
+        });
   }
 
   @override
@@ -49,6 +81,29 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
         elevation: 0,
         iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
         actions: [
+          // Data info badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: _hasRealData
+                  ? Colors.green.withOpacity(0.2)
+                  : Colors.orange.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _hasRealData ? Colors.green : Colors.orange,
+                width: 1,
+              ),
+            ),
+            child: Text(
+              '${_dataCount} data',
+              style: TextStyle(
+                fontSize: 12,
+                color: _hasRealData ? Colors.green : Colors.orange,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _load,
@@ -67,8 +122,17 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
               child: FutureBuilder<List<MoodData>>(
                 future: _future,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                  if (_isLoading) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('Loading mood data...'),
+                        ],
+                      ),
+                    );
                   }
 
                   if (snapshot.hasError) {
@@ -91,13 +155,14 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Check your internet connection',
+                            snapshot.error.toString(),
                             style: TextStyle(
                               color: MoodGraphStyles.getTextColor(
                                 isDark,
                               ).withOpacity(0.7),
-                              fontSize: 14,
+                              fontSize: 12,
                             ),
+                            textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 16),
                           ElevatedButton(
@@ -110,6 +175,54 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                   }
 
                   final data = snapshot.data ?? [];
+
+                  if (data.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.insights_outlined,
+                            size: 60,
+                            color: MoodGraphStyles.getTextColor(
+                              isDark,
+                            ).withOpacity(0.3),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No mood data available',
+                            style: TextStyle(
+                              color: MoodGraphStyles.getTextColor(isDark),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Text(
+                              'Analyze your diaries to see mood trends and insights',
+                              style: TextStyle(
+                                color: MoodGraphStyles.getTextColor(
+                                  isDark,
+                                ).withOpacity(0.6),
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () {
+                              // Navigate to diary or analysis page
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Go to Diaries'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
                   return SingleChildScrollView(
                     child: Column(
@@ -126,7 +239,39 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                             },
                           ),
                         ),
-                        const SizedBox(height: 20),
+
+                        // Info banner if using sample data
+                        if (!_hasRealData && data.isNotEmpty)
+                          Container(
+                            margin: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.orange),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Showing sample data. Analyze your diaries to see real mood trends.',
+                                    style: TextStyle(
+                                      color: MoodGraphStyles.getTextColor(
+                                        isDark,
+                                      ),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        const SizedBox(height: 16),
                         MoodLineChart(
                           data: data,
                           range: _range,
@@ -177,13 +322,37 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Recent Moods',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: MoodGraphStyles.getTextColor(isDark),
-            ),
+          Row(
+            children: [
+              Text(
+                'Recent Moods',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: MoodGraphStyles.getTextColor(isDark),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (!_hasRealData)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Sample',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           ...recentMoods.reversed.map((mood) {
@@ -228,6 +397,18 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                             ).withOpacity(0.6),
                           ),
                         ),
+                        if (mood.advice.isNotEmpty && mood.advice.length < 50)
+                          Text(
+                            mood.advice,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: MoodGraphStyles.getTextColor(
+                                isDark,
+                              ).withOpacity(0.5),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                       ],
                     ),
                   ),

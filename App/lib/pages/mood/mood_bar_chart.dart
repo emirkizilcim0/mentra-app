@@ -18,9 +18,34 @@ class MoodBarChart extends StatelessWidget {
   });
 
   @override
+  @override
   Widget build(BuildContext context) {
-    if (data.isEmpty) return Container();
-
+    if (data.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: MoodGraphStyles.getChartContainerDecoration(isDark),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.bar_chart,
+                size: 40,
+                color: MoodGraphStyles.getTextColor(isDark).withOpacity(0.3),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No mood data available for chart',
+                style: TextStyle(
+                  color: MoodGraphStyles.getTextColor(isDark),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final textColor = MoodGraphStyles.getTextColor(isDark);
     final gridColor = MoodGraphStyles.getGridColor(isDark);
 

@@ -1,7 +1,6 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // <--- TARİH FORMATI İÇİN EKLENDİ
 import 'package:mentra_app/pages/advice/details/advice_details_page.dart';
-// Dosya yolunu senin projendeki yerine göre kontrol et:
 import 'advice_card.dart';
 import 'advice_utils.dart';
 
@@ -11,66 +10,89 @@ class AdviceList extends StatelessWidget {
 
   const AdviceList({super.key, required this.analyses, required this.isDark});
 
-  // --- YARDIMCI FONKSİYON: TARİH FORMATLA ---
-  String _formatDate(dynamic dateStr) {
-    if (dateStr == null) return "";
-    try {
-      // Gelen veri zaten DateTime ise direkt al, yoksa String'den çevir
-      DateTime date;
-      if (dateStr is DateTime) {
-        date = dateStr;
-      } else {
-        // Eğer zaten formatlanmışsa ("20 Dec...") parse hatası verebilir,
-        // bu durumda catch bloğuna düşer ve olduğu gibi gösteririz.
-        date = DateTime.parse(dateStr.toString());
-      }
-      // Format: "20 December 2025"
-      return DateFormat('d MMMM yyyy', 'en_US').format(date);
-    } catch (_) {
-      return dateStr.toString();
-    }
-  }
-  // -------------------------------------------
-
   @override
   Widget build(BuildContext context) {
+    print('📊 AdviceList building with ${analyses.length} items');
+
+    if (analyses.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.lightbulb_outline,
+              size: 64,
+              color: isDark ? Colors.white70 : Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No advice yet',
+              style: TextStyle(
+                fontSize: 18,
+                color: isDark ? Colors.white70 : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Analyze your diaries to get advice',
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white60 : Colors.grey[500],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: analyses.length,
       itemBuilder: (context, index) {
         final item = analyses[index];
 
-        // GÜNCELLEME: Veri 'analysis', 'content' veya 'advice' olarak gelebilir.
-        // Hepsini kontrol ediyoruz ki yazı boş kalmasın.
+        print('📋 Item $index keys: ${item.keys.toList()}');
+
+        // Get advice text - check multiple possible fields
         final adviceText =
             item['analysis']?.toString() ??
-            item['content']?.toString() ??
             item['advice']?.toString() ??
+            item['content']?.toString() ??
             '';
 
+        // Get title from advice text
         final title = getTitleFromAdvice(adviceText);
-        final mood = item['mood'] ?? 'Calm';
+
+        // Get mood and emoji
+        final mood = item['mood']?.toString() ?? 'Calm';
         final emoji = _getEmojiForMood(mood);
 
-        return AdviceCard(
-          // --- BURASI GÜNCELLENDİ ---
-          // Ham veriyi _formatDate fonksiyonuna sokuyoruz.
-          // Hangisi doluysa onu alıp formatlayacak.
-          date: _formatDate(
-            item['formattedDate'] ?? item['created_at'] ?? item['date'],
-          ),
+        // Get date for display
+        final date =
+            item['formattedDate']?.toString() ??
+            item['created_at']?.toString() ??
+            item['date']?.toString() ??
+            'Recent';
 
+        print('   Title: ${title.substring(0, min(30, title.length))}...');
+        print('   Mood: $mood');
+        print('   Date: $date');
+
+        return AdviceCard(
+          date: date,
           title: title,
           mood: mood,
           emoji: emoji,
           isDark: isDark,
-          // SAYFA YÖNLENDİRMESİ BURADA
           onTap: () {
+            print('👉 Tapping advice $index');
+            print('   Passing item with keys: ${item.keys.toList()}');
+
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => AdviceDetailPage(
-                  analysisItem: item, // Tüm veriyi detay sayfasına gönderiyoruz
+                  analysisItem: item, // Pass the full item
                   title: title,
                 ),
               ),
@@ -82,21 +104,18 @@ class AdviceList extends StatelessWidget {
   }
 
   String _getEmojiForMood(String mood) {
-    switch (mood.toLowerCase()) {
-      case 'happy':
-        return '😊';
-      case 'sad':
-        return '😢';
-      case 'anxious':
-        return '😰';
-      case 'angry':
-        return '😠';
-      case 'calm':
-        return '😌';
-      case 'confused':
-        return '😕';
-      default:
-        return '😊';
-    }
+    final moodLower = mood.toLowerCase();
+
+    if (moodLower.contains('happy')) return '😊';
+    if (moodLower.contains('sad')) return '😢';
+    if (moodLower.contains('anxious') || moodLower.contains('worried'))
+      return '😰';
+    if (moodLower.contains('angry') || moodLower.contains('mad')) return '😠';
+    if (moodLower.contains('calm') || moodLower.contains('peaceful'))
+      return '😌';
+    if (moodLower.contains('neutral')) return '😐';
+    if (moodLower.contains('confused')) return '😕';
+
+    return '😊'; // Default
   }
 }

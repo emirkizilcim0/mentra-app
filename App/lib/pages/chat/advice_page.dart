@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:mentra_app/services/dairy/dairy_service.dart';
 import 'package:provider/provider.dart';
-
+import 'package:intl/intl.dart';
+// ✅ IMPORTANT: Add this missing import
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:mentra_app/pages/chat/logic_data.dart';
 import 'advice_view_body.dart';
+import 'dart:math';
 
 class AdvicePage extends StatefulWidget {
-  // 1. BU İKİ DEĞİŞKENİ EKLE: Dışarıdan veri alabilmesi için
   final String? generatedAdvice;
   final String? date;
 
@@ -21,50 +25,262 @@ class _AdvicePageState extends State<AdvicePage> {
   bool isLoading = true;
   String? errorMessage;
 
+  // ✅ FIX: Add a refresh trigger
+  int _refreshTrigger = 0;
+
   @override
   void initState() {
     super.initState();
-    // 2. KONTROL MANTIĞI: Veri geldi mi yoksa geçmişi mi çekelim?
-    if (widget.generatedAdvice != null) {
-      // Eğer ChatPage'den veri geldiyse, direkt onu ekrana bas
-      setState(() {
-        analyses = [
-          {
-            'analysis': widget
-                .generatedAdvice, // AdviceViewBody'nin beklediği key (muhtemelen 'analysis' veya 'content')
-            'created_at': widget.date ?? DateTime.now().toString(),
-          },
-        ];
-        isLoading = false;
-      });
-    } else {
-      // Veri gelmediyse (Menüden açıldıysa) geçmişi yükle
-      _loadAnalyses();
+    print('🔍 AdvicePage initState called');
+    print('   generatedAdvice: ${widget.generatedAdvice != null}');
+
+    // Load analyses from backend
+    _loadAnalyses();
+  }
+
+  // ✅ FIX: Add didUpdateWidget to handle when page is re-opened
+  @override
+  void didUpdateWidget(AdvicePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    print('🔄 AdvicePage didUpdateWidget - refreshing data');
+    _loadAnalyses();
+  }
+
+  // ✅ FIX: Also refresh when page becomes visible again
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // This helps catch when Navigator pops back to this page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !isLoading) {
+        _checkForNewAdvice();
+      }
+    });
+  }
+
+  Future<void> _checkForNewAdvice() async {
+    print('🔄 Checking for new advice...');
+    // Compare current count with what we should have
+    try {
+      final freshCount = await _getFreshAnalysisCount();
+      if (freshCount > analyses.length) {
+        print(
+          '📈 Found ${freshCount - analyses.length} new analyses, refreshing...',
+        );
+        _loadAnalyses();
+      }
+    } catch (e) {
+      print('⚠️ Error checking for new advice: $e');
     }
   }
 
+  Future<int> _getFreshAnalysisCount() async {
+    try {
+      // Quick API call just to get count
+      final userData = await LogicData.loadUserData();
+      final userId = userData['id']?.toString() ?? 'unknown';
+
+      final response = await http.get(
+        Uri.parse(
+          'https://mentra-app-b2ei.onrender.com/analyses?user_id=$userId&limit=1',
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        // Check headers or response for count if available
+        return (data as List).length;
+      }
+    } catch (e) {
+      print('⚠️ Error getting fresh count: $e');
+    }
+    return analyses.length;
+  }
+
+  // In your advice_page.dart, update the _loadAnalyses method:
   Future<void> _loadAnalyses() async {
     try {
       setState(() {
         isLoading = true;
         errorMessage = null;
       });
+
+      print('📋 Loading analyses from DiaryService...');
+
+      // Get analyses from service
       final items = await DiaryService.getAnalysisHistory(limit: 50);
+
+      print('📊 Received ${items.length} items from getAnalysisHistory');
+
+      // If no items, show empty state
+      if (items.isEmpty) {
+        print('📭 No analyses found');
+        setState(() {
+          analyses = [];
+          isLoading = false;
+        });
+        return;
+      }
+
+      // Debug: print first item structure if available
+      final firstItem = items[0];
+      print('📝 First item structure:');
+      print('   Keys: ${firstItem.keys.toList()}');
+      print('   Has "analysis": ${firstItem.containsKey('analysis')}');
+      print('   Has "advice": ${firstItem.containsKey('advice')}');
+
+      // Check content
+      final analysisText = firstItem['analysis']?.toString() ?? '';
+      final adviceText = firstItem['advice']?.toString() ?? '';
+
+      if (analysisText.isNotEmpty) {
+        print(
+          '   analysis: ${analysisText.substring(0, min(50, analysisText.length))}...',
+        );
+      } else {
+        print('   ⚠️ analysis is empty string!');
+      }
+
+      if (adviceText.isNotEmpty) {
+        print(
+          '   advice: ${adviceText.substring(0, min(50, adviceText.length))}...',
+        );
+      } else {
+        print('   ⚠️ advice is empty string!');
+      }
+
+      // If we have chat-generated advice, add it to the list
+      if (widget.generatedAdvice != null &&
+          widget.generatedAdvice!.isNotEmpty) {
+        print('➕ Adding chat-generated advice to list');
+        final chatAnalysis = {
+          'analysis': widget.generatedAdvice,
+          'advice': widget.generatedAdvice,
+          'created_at': widget.date ?? DateTime.now().toIso8601String(),
+          'date': widget.date ?? DateTime.now().toIso8601String(),
+          'mood': 'Calm',
+          'has_advice': true,
+          'seen': false,
+          'character_type': 'Chat Generated',
+          'sign': 'Unknown',
+          'is_new': true,
+        };
+        items.insert(0, chatAnalysis);
+      }
+
+      // Process all items to ensure they have required fields
+      final List<Map<String, dynamic>> processedItems = items.map((item) {
+        // Create a copy
+        final Map<String, dynamic> processed = Map<String, dynamic>.from(item);
+
+        // ✅ FIX: Handle empty advice text properly
+        String adviceText =
+            processed['analysis']?.toString() ??
+            processed['advice']?.toString() ??
+            '';
+
+        if (adviceText.trim().isEmpty) {
+          print(
+            '⚠️ Empty advice text found for item ${processed['id'] ?? 'unknown'}',
+          );
+          // Try to get content from other fields
+          if (processed['content']?.toString().isNotEmpty == true) {
+            adviceText =
+                "Analysis of: ${processed['content']?.toString().substring(0, min(100, processed['content']?.toString().length ?? 0))}...";
+          } else {
+            adviceText = "Advice analysis will be available soon.";
+          }
+        }
+
+        // Ensure both fields exist
+        processed['analysis'] = adviceText;
+        processed['advice'] = adviceText;
+
+        // Ensure mood field exists
+        if (!processed.containsKey('mood') ||
+            processed['mood']?.toString().isEmpty == true) {
+          processed['mood'] = 'Calm';
+        }
+
+        // Ensure seen field exists
+        if (!processed.containsKey('seen')) {
+          processed['seen'] = processed.containsKey('is_new') ? false : true;
+        }
+
+        // Ensure date field exists
+        if (!processed.containsKey('date') &&
+            processed.containsKey('created_at')) {
+          processed['date'] = processed['created_at'];
+        }
+
+        // Create a formatted date for display
+        if (processed.containsKey('date')) {
+          try {
+            String dateStr = processed['date'].toString();
+            DateTime date;
+            if (dateStr.contains('T')) {
+              date = DateTime.parse(dateStr);
+            } else {
+              date = DateTime.parse('${dateStr}Z');
+            }
+            processed['formattedDate'] = DateFormat(
+              'd MMMM yyyy',
+              'en_US',
+            ).format(date.toLocal());
+          } catch (e) {
+            final dateStr = processed['date'].toString();
+            print('Date parse error for "$dateStr": $e');
+            processed['formattedDate'] = 'Recent';
+          }
+        } else {
+          processed['formattedDate'] = 'Recent';
+        }
+
+        return processed;
+      }).toList();
+
+      // Sort by date (newest first)
+      processedItems.sort((a, b) {
+        try {
+          final dateA = a['date'] is String
+              ? DateTime.parse(a['date'].toString())
+              : DateTime.now();
+          final dateB = b['date'] is String
+              ? DateTime.parse(b['date'].toString())
+              : DateTime.now();
+          return dateB.compareTo(dateA);
+        } catch (e) {
+          return 0;
+        }
+      });
+
+      print('✅ Processed ${processedItems.length} analyses');
+
       setState(() {
-        analyses = items;
+        analyses = processedItems;
         isLoading = false;
+        _refreshTrigger++; // Increment refresh trigger
       });
     } catch (e) {
+      print('❌ Error loading analyses: $e');
       setState(() {
         isLoading = false;
-        errorMessage = "Advices aren't available at the moment.";
+        errorMessage =
+            "Advices aren't available at the moment. Please check your connection.";
       });
     }
+  }
+
+  // ✅ FIX: Add a manual refresh method that can be called externally
+  Future<void> refreshData() async {
+    print('🔄 Manual refresh triggered');
+    await _loadAnalyses();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+
     return Scaffold(
       backgroundColor: isDark
           ? const Color(0xFF121212)
@@ -72,15 +288,22 @@ class _AdvicePageState extends State<AdvicePage> {
       appBar: AppBar(
         title: const Text('Advice'),
         actions: [
-          // Eğer tek bir advice gösteriyorsak refresh butonu geçmişe dönmeyi sağlayabilir
-          IconButton(onPressed: _loadAnalyses, icon: const Icon(Icons.refresh)),
+          // Refresh button with pull-to-refresh indicator
+          IconButton(
+            onPressed: () => refreshData(),
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+          ),
         ],
       ),
-      body: AdviceViewBody(
-        isLoading: isLoading,
-        errorMessage: errorMessage,
-        analyses: analyses,
-        isDark: isDark,
+      body: RefreshIndicator(
+        onRefresh: refreshData,
+        child: AdviceViewBody(
+          isLoading: isLoading,
+          errorMessage: errorMessage,
+          analyses: analyses,
+          isDark: isDark,
+        ),
       ),
     );
   }

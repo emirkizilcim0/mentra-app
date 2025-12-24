@@ -11,6 +11,7 @@ import 'logic_nav.dart';
 import 'chat_view.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:mentra_app/services/advice_notifier.dart';
 
 class ChatPage extends StatefulWidget {
   final DateTime? selectedDate;
@@ -58,6 +59,32 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _saveAnalysisToAPI(Map<String, dynamic> data) async {
+    try {
+      print('💾 Saving analysis to API:');
+      print('   Data keys: ${data.keys.toList()}');
+      print('   user_id: ${data['user_id']}');
+      print('   diary_id: ${data['diary_id']}');
+      print('   advice length: ${data['advice']?.toString().length ?? 0}');
+
+      final res = await http.post(
+        Uri.parse('https://mentra-app-b2ei.onrender.com/analyses'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(data),
+      );
+
+      print('📡 Save response: ${res.statusCode} - ${res.body}');
+
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        print("❌ Error saving to API: ${res.statusCode} - ${res.body}");
+      } else {
+        print("✅ Analysis saved to API successfully!");
+      }
+    } catch (e) {
+      print("❌ Exception during saving: $e");
+    }
+  }
+
   // --- PostgreSQL API'DEN ANALİZLERİ ÇEK ---
   Future<List<Map<String, dynamic>>> _fetchAnalysesFromAPI() async {
     try {
@@ -93,6 +120,12 @@ class _ChatPageState extends State<ChatPage> {
       print('Fetch analyses error: $e');
       return [];
     }
+  }
+
+  void _notifyNewAdviceCreated() {
+    print('📢 New advice created - should trigger refresh in AdvicePage');
+    // You could use a Provider/Notifier here, but for now we'll rely on the refresh
+    // when AdvicePage becomes visible again
   }
 
   Future<void> _loadDiaries() async {
@@ -208,7 +241,10 @@ class _ChatPageState extends State<ChatPage> {
             'character_type': type,
             'sign': sign,
             'has_advice': true,
+            'seen': true,
           };
+          _notifyNewAdviceCreated();
+          AdviceNotifier().notifyNewAdviceCreated();
 
           setState(() {
             _isAnalyzing = false;
@@ -255,7 +291,22 @@ class _ChatPageState extends State<ChatPage> {
       );
       print("📢 5. DURUM: AI cevabı geldi.");
 
-      Map<String, dynamic> finalData = Map.of(response);
+      Map<String, dynamic> finalData = {};
+
+      // ✅ Extract from results[0]
+      if (response['results'] != null &&
+          response['results'] is List &&
+          response['results'].isNotEmpty) {
+        final first = response['results'][0];
+
+        finalData['advice'] = first['advice'] ?? '';
+        finalData['analysis'] = first['advice'] ?? ''; // reuse text if you want
+        finalData['mood'] = first['mood'] ?? 'Calm';
+      } else {
+        finalData['advice'] = '';
+        finalData['analysis'] = '';
+        finalData['mood'] = 'Calm';
+      }
 
       // Prepare data for navigation
       finalData['date'] = entry?['date'];
@@ -267,6 +318,50 @@ class _ChatPageState extends State<ChatPage> {
       finalData['character_type'] = type;
       finalData['sign'] = sign;
       finalData['mood'] ??= 'Calm';
+
+      // In your chat_page.dart, update the save call in _getAdvice method:
+      if (currentId != null && finalData['advice'].toString().isNotEmpty) {
+        // ✅ FIX: Get user data properly
+        final user = await LogicData.loadUserData();
+        final String userId =
+            user['id']?.toString() ??
+            user['_id']?.toString() ??
+            user['user_id']?.toString() ??
+            'unknown';
+
+        print('💾 Saving analysis for user: $userId, diary: $currentId');
+
+        // ✅ FIX: Include ALL required fields
+        final saveData = {
+          'user_id': userId, // ✅ REQUIRED
+          'diary_id': int.tryParse(currentId) ?? 0, // ✅ Should be integer
+          'advice': finalData['advice'],
+          'analysis': finalData['analysis'],
+          'mood': finalData['mood'] ?? 'Calm',
+          'mood_source': 'ai_detected', // ✅ REQUIRED
+          'character_type': type,
+          'sign': sign,
+          'has_advice': true,
+          'seen': false,
+        };
+
+        print('📦 Save data: ${saveData.keys.toList()}');
+
+        await _saveAnalysisToAPI(saveData);
+
+        // Also call the notification
+        AdviceNotifier().notifyNewAdviceCreated();
+      }
+
+      if (mounted && entry != null) {
+        setState(() {
+          entry['advice'] = finalData['advice'];
+          entry['analysis'] = finalData['analysis'];
+          entry['mood'] = finalData['mood'];
+          entry['has_advice'] = true;
+          entry['seen'] = false;
+        });
+      }
 
       // Navigate to advice page
       if (mounted) {

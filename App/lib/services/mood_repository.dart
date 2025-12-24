@@ -2,28 +2,38 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:mentra_app/models/mood_data.dart';
-import 'package:mentra_app/services/dairy/dairy_auth.dart';
-import 'package:mentra_app/services/dairy/dairy_config.dart';
+import 'package:mentra_app/pages/chat/logic_data.dart';
 
 enum MoodRange { day, week, month }
 
 class MoodRepository {
   Future<List<MoodData>> fetchMoodTrend(MoodRange range) async {
     try {
-      final uid = DiaryAuth.getUserId();
+      // Get user ID from local storage
+      final userData = await LogicData.loadUserData();
+      final userId =
+          userData['id']?.toString() ??
+          userData['_id']?.toString() ??
+          userData['user_id']?.toString() ??
+          'unknown';
 
-      // Get all analyses first
+      print('🔍 Fetching mood data for user: $userId, range: $range');
+
+      // ✅ FIX: Use /analyses endpoint instead of /analysis/history
       final uri = Uri.parse(
-        '${DiaryConfig.baseUrl}/analysis/history/$uid?limit=100',
+        'https://mentra-app-b2ei.onrender.com/analyses?user_id=$userId&limit=100',
       );
 
-      print('🔍 Fetching mood data for range: $range');
-
-      final response = await http.get(uri, headers: DiaryConfig.getHeaders);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List<dynamic> analyses = data['analyses'] ?? [];
+        final List<dynamic> analyses = json.decode(response.body);
 
         print('📊 Found ${analyses.length} analyses from API');
 
@@ -31,11 +41,11 @@ class MoodRepository {
         List<MoodData> allMoodData = [];
         for (var analysis in analyses) {
           try {
-            final dateStr = analysis['date'] ?? analysis['created_at'];
+            final dateStr = analysis['created_at'] ?? analysis['date'];
             final moodStr = analysis['mood']?.toString() ?? 'Calm';
-            final advice = analysis['advice'];
+            final advice = analysis['advice'] ?? analysis['analysis'] ?? '';
 
-            if (dateStr != null) {
+            if (dateStr != null && moodStr.isNotEmpty) {
               final date = DateTime.parse(dateStr);
               allMoodData.add(
                 MoodData.fromString(
@@ -44,6 +54,7 @@ class MoodRepository {
                   advice: advice,
                 ),
               );
+              print('   ✓ ${date.toLocal()} - $moodStr');
             }
           } catch (e) {
             print('⚠️ Error parsing analysis: $e');
@@ -60,7 +71,20 @@ class MoodRepository {
         switch (range) {
           case MoodRange.day:
             // Today only
-            filteredData = allMoodData.where((mood) => mood.isToday).toList();
+            final today = DateTime(now.year, now.month, now.day);
+            filteredData = allMoodData.where((mood) {
+              final moodDate = DateTime(
+                mood.date.year,
+                mood.date.month,
+                mood.date.day,
+              );
+              return moodDate == today;
+            }).toList();
+
+            // If no data for today, use the latest
+            if (filteredData.isEmpty && allMoodData.isNotEmpty) {
+              filteredData = [allMoodData.first];
+            }
             break;
 
           case MoodRange.week:
@@ -86,8 +110,15 @@ class MoodRepository {
                 .where((mood) => mood.date.isAfter(monthAgo))
                 .toList();
 
-            // Group by week for month view
-            filteredData = _groupByWeek(filteredData);
+            // If we have more than 10 points, group by week
+            if (filteredData.length > 10) {
+              filteredData = _groupByWeek(filteredData);
+            }
+
+            // Take max 12 data points for month view
+            if (filteredData.length > 12) {
+              filteredData = filteredData.sublist(filteredData.length - 12);
+            }
             break;
         }
 
@@ -96,13 +127,19 @@ class MoodRepository {
 
         print('✅ Final data count for $range: ${filteredData.length}');
 
-        return filteredData;
-      }
+        // If still no data, generate sample
+        if (filteredData.isEmpty) {
+          print('📝 No real data, generating sample');
+          return _getSampleData(range);
+        }
 
-      throw Exception('Failed to fetch mood data: ${response.statusCode}');
+        return filteredData;
+      } else {
+        print('❌ API Error: ${response.statusCode} - ${response.body}');
+        return _getSampleData(range);
+      }
     } catch (e) {
       print('❌ Error fetching mood trend: $e');
-      // Return sample data for testing
       return _getSampleData(range);
     }
   }
@@ -133,6 +170,7 @@ class MoodRepository {
           MoodData(
             date: date,
             mood: Mood.calm, // Default for no data
+            moodScore: 3.0, // Neutral score
             advice: 'No analysis for this day',
           ),
         );
@@ -178,6 +216,7 @@ class MoodRepository {
           MoodData(
             date: firstMood.date,
             mood: avgMood,
+            moodScore: avgScore,
             advice: 'Weekly average',
           ),
         );
@@ -212,8 +251,10 @@ class MoodRepository {
       Mood.angry,
     ];
 
-    int dataPoints = 1;
-    int daysBetween = 0;
+    final moodScores = [5.0, 1.0, 2.0, 4.0, 3.0, 0.0];
+
+    int dataPoints = 7;
+    int daysBetween = 1;
 
     switch (range) {
       case MoodRange.day:
@@ -225,20 +266,21 @@ class MoodRepository {
         daysBetween = 1;
         break;
       case MoodRange.month:
-        dataPoints = 4; // 4 weeks
-        daysBetween = 7;
+        dataPoints = 12; // 3 weeks * 4 points per week
+        daysBetween = 2;
         break;
     }
 
     final data = List.generate(dataPoints, (index) {
-      final daysAgo = (dataPoints - 1 - index) * daysBetween; // Reverse order
+      final daysAgo = (dataPoints - 1 - index) * daysBetween;
       final date = now.subtract(Duration(days: daysAgo));
-      final mood = moods[index % moods.length];
+      final moodIndex = index % moods.length;
 
       return MoodData(
         date: date,
-        mood: mood,
-        advice: 'Sample data ${index + 1}',
+        mood: moods[moodIndex],
+        moodScore: moodScores[moodIndex],
+        advice: 'Sample analysis ${index + 1}',
       );
     });
 
@@ -251,9 +293,9 @@ class MoodRepository {
       case MoodRange.day:
         return 'Today';
       case MoodRange.week:
-        return _getDayName(date.weekday); // Mon, Tue, etc.
+        return _getDayName(date.weekday);
       case MoodRange.month:
-        return 'Week ${_getWeekOfMonth(date)}';
+        return 'W${_getWeekOfMonth(date)}';
     }
   }
 

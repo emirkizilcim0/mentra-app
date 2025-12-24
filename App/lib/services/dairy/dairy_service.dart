@@ -12,6 +12,7 @@ import 'package:mentra_app/services/dairy/dairy_repo_single.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_stats.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_update.dart';
 import 'package:mentra_app/pages/chat/logic_data.dart';
+import 'dart:math';
 
 class DiaryService {
   static List<Map<String, dynamic>>? _diariesCache;
@@ -84,6 +85,8 @@ class DiaryService {
   // -------------------------
 
   // In your DiaryService class
+  // In your DiaryService class
+  // In your diary_service.dart, update getAnalysisHistory:
   static Future<List<Map<String, dynamic>>> getAnalysisHistory({
     int limit = 10,
     String? userId,
@@ -91,17 +94,35 @@ class DiaryService {
     try {
       // Get user ID from local storage
       final userData = await LogicData.loadUserData();
-      final currentUserId =
-          userId ??
-          userData['id']?.toString() ??
-          userData['_id']?.toString() ??
-          'unknown';
 
+      // ✅ FIX: Properly extract user ID
+      String currentUserId;
+
+      // Try different possible user ID fields
+      if (userId != null && userId.isNotEmpty) {
+        currentUserId = userId;
+      } else if (userData['id'] != null &&
+          userData['id'].toString().isNotEmpty) {
+        currentUserId = userData['id'].toString();
+      } else if (userData['_id'] != null &&
+          userData['_id'].toString().isNotEmpty) {
+        currentUserId = userData['_id'].toString();
+      } else if (userData['user_id'] != null &&
+          userData['user_id'].toString().isNotEmpty) {
+        currentUserId = userData['user_id'].toString();
+      } else {
+        currentUserId = 'unknown';
+        print('⚠️ Warning: No user ID found, using "unknown"');
+      }
+
+      print('🔍 Fetching analyses for user: $currentUserId');
+
+      // ✅ FIX: Use correct backend URL with user_id parameter
       final url = Uri.parse(
-        'https://mentra-app-b2ei.onrender.com/analysis/history/$currentUserId?limit=$limit',
+        'https://mentra-app-b2ei.onrender.com/analyses?user_id=$currentUserId&limit=$limit',
       );
 
-      print('🔍 Fetching analysis history for user: $currentUserId');
+      print('🌐 API URL: $url');
 
       final response = await http.get(
         url,
@@ -112,20 +133,45 @@ class DiaryService {
       );
 
       print('📡 Response status: ${response.statusCode}');
-      print('📡 Response body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.jsonDecode(response.body);
+        final List<dynamic> data = json.jsonDecode(response.body);
 
-        // Check the structure of the response
-        print('📊 Parsed data keys: ${data.keys.toList()}');
+        print('📊 Received ${data.length} analyses from backend');
 
-        // The backend returns: {"analyses": [...]}
-        final List<dynamic> analysesList = data['analyses'] ?? [];
-        print('📄 Found ${analysesList.length} analyses');
+        // Debug: Print structure of first item if available
+        if (data.isNotEmpty) {
+          final firstItem = data[0];
+          print('📝 First analysis structure:');
+          if (firstItem is Map) {
+            print('   Keys: ${firstItem.keys.toList()}');
+            print('   Has "analysis": ${firstItem.containsKey('analysis')}');
+            print('   Has "advice": ${firstItem.containsKey('advice')}');
+
+            // Check if advice text exists
+            final analysisText = firstItem['analysis']?.toString() ?? '';
+            final adviceText = firstItem['advice']?.toString() ?? '';
+
+            if (analysisText.isNotEmpty) {
+              print(
+                '   analysis: ${analysisText.substring(0, min(50, analysisText.length))}...',
+              );
+            } else {
+              print('   ⚠️ analysis is empty!');
+            }
+
+            if (adviceText.isNotEmpty) {
+              print(
+                '   advice: ${adviceText.substring(0, min(50, adviceText.length))}...',
+              );
+            } else {
+              print('   ⚠️ advice is empty!');
+            }
+          }
+        }
 
         // Convert to List<Map<String, dynamic>>
-        return analysesList.map((item) {
+        return data.map((item) {
           if (item is Map<String, dynamic>) {
             return item;
           } else if (item is Map) {
@@ -134,8 +180,12 @@ class DiaryService {
             return <String, dynamic>{};
           }
         }).toList();
+      } else if (response.statusCode == 404) {
+        print('📭 No analyses found for user $currentUserId');
+        return [];
       } else {
-        print('❌ Error fetching analysis history: ${response.statusCode}');
+        print('❌ Error fetching analyses: ${response.statusCode}');
+        print('   Response body: ${response.body}');
         return [];
       }
     } catch (e) {

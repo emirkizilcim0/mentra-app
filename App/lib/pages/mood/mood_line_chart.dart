@@ -20,7 +20,7 @@ class MoodLineChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (data.isEmpty) {
-      return _buildEmptyState(isDark);
+      return _buildEmptyState(isDark, 'No mood data available');
     }
 
     final lineColor = MoodGraphStyles.getLineColor(isDark);
@@ -360,7 +360,7 @@ class MoodLineChart extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(bool isDark, String message) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: MoodGraphStyles.getChartContainerDecoration(isDark),
@@ -369,24 +369,16 @@ class MoodLineChart extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.insights,
+              Icons.timeline,
               size: 40,
               color: MoodGraphStyles.getTextColor(isDark).withOpacity(0.3),
             ),
             const SizedBox(height: 12),
             Text(
-              'No mood data available',
+              message,
               style: TextStyle(
                 color: MoodGraphStyles.getTextColor(isDark),
                 fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Start analyzing your diaries',
-              style: TextStyle(
-                color: MoodGraphStyles.getTextColor(isDark).withOpacity(0.6),
-                fontSize: 11,
               ),
             ),
           ],
