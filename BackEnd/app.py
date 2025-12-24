@@ -140,7 +140,7 @@ async def migrate_database_schema(conn):
         if analyses_exists:
             await conn.execute("""
         ALTER TABLE analyses
-        ADD COLUMN IF NOT EXISTS seen BOOLEAN DEFAULT FALSE;
+        ADD COLUMN IF NOT EXISTS seen BOOLEAN DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
         """)
             # Check if user_id column exists
