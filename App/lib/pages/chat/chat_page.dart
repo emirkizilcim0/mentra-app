@@ -130,6 +130,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadDiaries() async {
     setState(() {
+      diaries = [];
       loading = true;
       error = null;
     });
