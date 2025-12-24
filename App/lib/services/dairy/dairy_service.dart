@@ -152,7 +152,7 @@ class DiaryService {
   static Future<Map<String, dynamic>> saveAnalysis({
     required int diaryId,
     required String advice,
-    required String analysis,
+    required String analysis, // This can be removed or kept for compatibility
     required String characterType,
     required String sign,
     String mood = 'Neutral',
@@ -170,8 +170,7 @@ class DiaryService {
       headers: {'Content-Type': 'application/json'},
       body: json.jsonEncode({
         'diary_id': diaryId,
-        'advice': advice,
-        'analysis': analysis,
+        'advice': advice, // Only send advice, not analysis
         'mood': mood,
         'mood_source': moodSource,
         'character_type': characterType,

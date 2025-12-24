@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -9,6 +9,17 @@ import json
 from datetime import datetime
 import logging
 from diary_service import DiaryPsychologistAdvisor
+
+psychologist = None
+
+def get_psychologist():
+    global psychologist
+    if psychologist is None:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY not set")
+        psychologist = DiaryPsychologistAdvisor(api_key=api_key)
+    return psychologist
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,17 +34,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-psychologist = None
-
-def get_psychologist():
-    global psychologist
-    if psychologist is None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY not set")
-        psychologist = DiaryPsychologistAdvisor(api_key=api_key)
-    return psychologist
 
 # Database connection pool
 connection_pool = None
@@ -58,7 +58,7 @@ async def create_db_pool():
         logger.info("Database setup completed")
 
 async def create_tables(conn):
-    """Create all necessary tables"""
+    """Create all necessary tables with correct schema"""
     
     # Create user_diaries table
     await conn.execute('''
@@ -73,7 +73,7 @@ async def create_tables(conn):
         );
     ''')
     
-    # Create analyses table
+    # Create analyses table - FIXED: Remove analysis column, use advice for both
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS analyses (
             id SERIAL PRIMARY KEY,
@@ -81,7 +81,6 @@ async def create_tables(conn):
             diary_id INTEGER NOT NULL DEFAULT 0,
             user_id VARCHAR(255) NOT NULL,
             advice TEXT NOT NULL,
-            analysis TEXT NOT NULL,
             mood VARCHAR(100),
             mood_source VARCHAR(50),
             character_type VARCHAR(100),
@@ -98,6 +97,13 @@ async def create_tables(conn):
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_user_diaries_created_at ON user_diaries(created_at);')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id);')
     await conn.execute('CREATE INDEX IF NOT EXISTS idx_analyses_diary_id ON analyses(diary_id);')
+    
+    # Drop the analysis column if it exists (legacy schema)
+    try:
+        await conn.execute('ALTER TABLE analyses DROP COLUMN IF EXISTS analysis;')
+        logger.info("✅ Dropped legacy 'analysis' column")
+    except Exception as e:
+        logger.info(f"ℹ️ 'analysis' column already removed or doesn't exist: {e}")
 
 @app.on_event("startup")
 async def startup_event():
@@ -129,7 +135,6 @@ class DiaryAnalysisRequest(BaseModel):
 class SaveAnalysisRequest(BaseModel):
     diary_id: Optional[int] = 0
     advice: str
-    analysis: str
     mood: str = "Neutral"
     mood_source: str = "ai_detected"
     character_type: str
@@ -143,7 +148,6 @@ def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, st
     """Detect mood from content with rule-based overrides."""
     content_lower = content.lower()
     
-    # Rule-based mood detection
     angry_keywords = ["angry", "mad", "furious", "rage", "irritated", "annoyed", 
                      "upset", "hate", "frustrated", "cant stand", "pissed",
                      "sinir", "kızgın", "öfke", "sinirliyim", "kızgınım"]
@@ -177,7 +181,6 @@ def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, st
         if keyword in content_lower:
             return "Calm", "content_override"
     
-    # If no rule matches, use AI mood with fallback
     if ai_mood and ai_mood != "Neutral":
         return ai_mood, "ai_detected"
     
@@ -253,7 +256,7 @@ async def get_user_diaries(user_id: str, limit: int = 20):
             
             # Get the latest analysis for this diary
             analysis = await connection_pool.fetchrow('''
-                SELECT mood, mood_source, advice, analysis, seen
+                SELECT mood, mood_source, advice, seen
                 FROM analyses 
                 WHERE user_id = $1 AND diary_id = $2
                 ORDER BY created_at DESC 
@@ -273,7 +276,7 @@ async def get_user_diaries(user_id: str, limit: int = 20):
                 "date": diary["created_at"].isoformat(),
                 "has_advice": analysis is not None,
                 "advice": analysis["advice"] if analysis else "",
-                "analysis": analysis["analysis"] if analysis else "",
+                "analysis": analysis["advice"] if analysis else "",  # Use advice for both
                 "seen": analysis["seen"] if analysis else False
             })
         
@@ -394,11 +397,11 @@ async def analyze_diaries(request: DiaryAnalysisRequest, user_id: str):
                     # Insert into analyses table
                     await connection_pool.execute('''
                         INSERT INTO analyses (
-                            analysis_key, diary_id, user_id, advice, analysis,
+                            analysis_key, diary_id, user_id, advice,
                             mood, mood_source, character_type, sign, has_advice, seen
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                    ''', analysis_key, diary_id, user_id, advice_text, advice_text,
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    ''', analysis_key, diary_id, user_id, advice_text,
                          final_mood, mood_source, request.character_type, 
                          request.sign, True, False)
                     
@@ -441,11 +444,11 @@ async def analyze_diaries(request: DiaryAnalysisRequest, user_id: str):
                     
                     await connection_pool.execute('''
                         INSERT INTO analyses (
-                            analysis_key, diary_id, user_id, advice, analysis,
+                            analysis_key, diary_id, user_id, advice,
                             mood, mood_source, character_type, sign, has_advice, seen
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                    ''', analysis_key, diary_id, user_id, advice_text, advice_text,
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    ''', analysis_key, diary_id, user_id, advice_text,
                          final_mood, mood_source, request.character_type, 
                          request.sign, True, False)
         
@@ -486,7 +489,7 @@ async def get_analysis_history(user_id: str, limit: int = 10):
         
         limit = int(limit)
         analyses = await connection_pool.fetch(f'''
-            SELECT id, analysis_key, diary_id, user_id, advice, analysis,
+            SELECT id, analysis_key, diary_id, user_id, advice,
                    mood, mood_source, character_type, sign, has_advice, seen, created_at
             FROM analyses 
             WHERE user_id = $1 
@@ -502,7 +505,7 @@ async def get_analysis_history(user_id: str, limit: int = 10):
                 "diary_id": analysis["diary_id"],
                 "user_id": analysis["user_id"],
                 "advice": analysis["advice"],
-                "analysis": analysis["analysis"],
+                "analysis": analysis["advice"],  # Duplicate advice as analysis
                 "mood": analysis["mood"],
                 "mood_source": analysis["mood_source"],
                 "character_type": analysis["character_type"],
@@ -538,7 +541,7 @@ async def get_user_analyses(
         if user_id:
             if diary_id:
                 analyses = await connection_pool.fetch(f'''
-                    SELECT id, analysis_key, diary_id, user_id, advice, analysis,
+                    SELECT id, analysis_key, diary_id, user_id, advice,
                            mood, mood_source, character_type, sign, has_advice, seen, created_at
                     FROM analyses
                     WHERE user_id = $1 AND diary_id = $2
@@ -547,7 +550,7 @@ async def get_user_analyses(
                 ''', user_id, diary_id)
             else:
                 analyses = await connection_pool.fetch(f'''
-                    SELECT id, analysis_key, diary_id, user_id, advice, analysis,
+                    SELECT id, analysis_key, diary_id, user_id, advice,
                            mood, mood_source, character_type, sign, has_advice, seen, created_at
                     FROM analyses
                     WHERE user_id = $1
@@ -557,7 +560,7 @@ async def get_user_analyses(
         else:
             # Get all analyses
             analyses = await connection_pool.fetch(f'''
-                SELECT id, analysis_key, diary_id, user_id, advice, analysis,
+                SELECT id, analysis_key, diary_id, user_id, advice,
                        mood, mood_source, character_type, sign, has_advice, seen, created_at
                 FROM analyses
                 ORDER BY created_at DESC
@@ -571,7 +574,7 @@ async def get_user_analyses(
                 "diary_id": a["diary_id"],
                 "user_id": a["user_id"],
                 "advice": a["advice"],
-                "analysis": a["analysis"],
+                "analysis": a["advice"],  # Duplicate advice as analysis
                 "mood": a["mood"],
                 "mood_source": a["mood_source"],
                 "character_type": a["character_type"],
@@ -599,13 +602,12 @@ async def save_analysis(payload: SaveAnalysisRequest, user_id: str):
         await connection_pool.execute(
             '''
             INSERT INTO analyses (
-                analysis_key, diary_id, user_id, advice, analysis,
+                analysis_key, diary_id, user_id, advice,
                 mood, mood_source, character_type, sign, has_advice, seen
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (analysis_key) DO UPDATE SET
                 advice = EXCLUDED.advice,
-                analysis = EXCLUDED.analysis,
                 mood = EXCLUDED.mood,
                 mood_source = EXCLUDED.mood_source,
                 character_type = EXCLUDED.character_type,
@@ -618,7 +620,6 @@ async def save_analysis(payload: SaveAnalysisRequest, user_id: str):
             payload.diary_id or 0,
             user_id,
             payload.advice,
-            payload.analysis,
             payload.mood,
             payload.mood_source,
             payload.character_type,
@@ -636,32 +637,6 @@ async def save_analysis(payload: SaveAnalysisRequest, user_id: str):
     except Exception as e:
         logger.error(f"Failed to save analysis: {e}")
         raise HTTPException(status_code=500, detail="Failed to save analysis")
-
-@app.patch("/analyses/{analysis_id}")
-async def update_analysis_seen(analysis_id: int, user_id: str, seen: bool = True):
-    """Update seen status of an analysis"""
-    try:
-        if not connection_pool:
-            raise HTTPException(status_code=500, detail="Database not configured")
-
-        result = await connection_pool.execute('''
-            UPDATE analyses 
-            SET seen = $1, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $2 AND user_id = $3
-        ''', seen, analysis_id, user_id)
-
-        if result == "UPDATE 0":
-            raise HTTPException(status_code=404, detail="Analysis not found")
-
-        return {
-            "status": "success",
-            "message": f"Analysis {analysis_id} marked as {'seen' if seen else 'unseen'}",
-            "user_id": user_id
-        }
-
-    except Exception as e:
-        logger.error(f"Error updating analysis: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update analysis")
 
 @app.get("/health")
 async def health_check():
