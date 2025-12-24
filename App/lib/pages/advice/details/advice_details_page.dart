@@ -1,6 +1,5 @@
-// lib/advice_detail_page.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // <--- EKLENDİ: Format için gerekli
+import 'package:intl/intl.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'advice_colors.dart';
@@ -20,46 +19,115 @@ class AdviceDetailPage extends StatelessWidget {
     required this.title,
   });
 
-  // --- EKLENEN FONKSİYON: US TARİH FORMATI ---
+  // --- IMPROVED DATE FORMATTING FUNCTION ---
   String _formatDateUS(Map<String, dynamic> item) {
-    // Veriyi güvenli şekilde çekiyoruz
-    final rawDate = item['formattedDate'] ?? item['created_at'] ?? item['date'];
+    // Try different date fields in order of priority
+    final dynamic rawDate =
+        item['formattedDate'] ??
+        item['created_at'] ??
+        item['date'] ??
+        item['analysis_date'] ??
+        DateTime.now();
 
-    if (rawDate == null) return '';
+    if (rawDate == null) return 'Date not available';
 
     try {
       DateTime date;
       if (rawDate is DateTime) {
         date = rawDate;
+      } else if (rawDate is String) {
+        // Handle different date string formats
+        if (rawDate.contains('T')) {
+          // ISO format: "2024-01-01T00:00:00Z"
+          date = DateTime.parse(rawDate);
+        } else if (rawDate.contains('-')) {
+          // Simple date format: "2024-01-01"
+          date = DateTime.parse(rawDate);
+        } else {
+          // Try to parse as timestamp
+          final timestamp = int.tryParse(rawDate);
+          if (timestamp != null) {
+            date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+          } else {
+            // Fallback to current date
+            date = DateTime.now();
+          }
+        }
+      } else if (rawDate is int) {
+        // Timestamp in milliseconds
+        date = DateTime.fromMillisecondsSinceEpoch(rawDate);
       } else {
-        date = DateTime.parse(rawDate.toString());
+        // Unknown type, use current date
+        date = DateTime.now();
       }
 
-      // US Formatı: "December 20, 2025"
-      // toLocal() ekledim ki saat farkından gün kaymasın
+      // Format in US style: "December 20, 2025"
       return DateFormat('d MMMM, yyyy', 'en_US').format(date.toLocal());
-    } catch (_) {
-      return rawDate.toString();
+    } catch (e) {
+      print('Date parsing error: $e for rawDate: $rawDate');
+      return 'Date format error';
     }
   }
   // ---------------------------------------------
 
+  // --- GET MOOD WITH FALLBACK ---
+  String _getSafeMood() {
+    final mood = analysisItem['mood']?.toString() ?? 'Calm';
+    // Ensure mood is one of the expected values
+    final validMoods = ['Happy', 'Sad', 'Anxious', 'Angry', 'Calm', 'Neutral'];
+    if (validMoods.contains(mood)) {
+      return mood;
+    }
+
+    // If mood is not valid, try to guess from content
+    final moodStr = mood.toLowerCase();
+    if (moodStr.contains('happy')) return 'Happy';
+    if (moodStr.contains('sad')) return 'Sad';
+    if (moodStr.contains('anxious') || moodStr.contains('stressed'))
+      return 'Anxious';
+    if (moodStr.contains('angry')) return 'Angry';
+    if (moodStr.contains('calm') || moodStr.contains('peaceful')) return 'Calm';
+
+    return 'Calm'; // Default
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
-    final mood = analysisItem['mood'] ?? 'Calm';
+    final mood = _getSafeMood();
     final emoji = _getEmojiForMood(mood);
     final moodColor = _getMoodColor(mood);
 
-    // Tarihi formatlayıp değişkene atayalım
+    // Get formatted date safely
     final formattedDate = _formatDateUS(analysisItem);
+
+    // Get advice text safely
+    final normalizedAdvice =
+        analysisItem['advice'] ??
+        analysisItem['advice_text'] ??
+        analysisItem['analysis'] ??
+        analysisItem['analysis_data']?['advice'];
+
+    final adviceText = normalizedAdvice?.toString().trim().isNotEmpty == true
+        ? normalizedAdvice.toString()
+        : 'No advice available.';
+
+    // Get other details safely
+    final diariesAnalyzed = analysisItem['diary_id'] != null ? 1 : 0;
+
+    final characterType = analysisItem['character_type'] ?? 'Not specified';
+    final sign = analysisItem['sign'] ?? 'Not specified';
 
     return Scaffold(
       backgroundColor: AdviceColors.bg(isDark),
-      appBar: AppBar(title: const Text('Advice')),
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Mood indicator at the top
             Container(
@@ -97,7 +165,7 @@ class AdviceDetailPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          formattedDate, // <--- GÜNCELLENDİ
+                          formattedDate,
                           style: TextStyle(
                             fontSize: 14,
                             color: isDark ? Colors.white70 : Colors.grey[600],
@@ -105,7 +173,7 @@ class AdviceDetailPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Diaries analyzed: ${analysisItem['diaries_analyzed'] ?? 0}',
+                          'Diaries analyzed: $diariesAnalyzed',
                           style: TextStyle(
                             fontSize: 12,
                             color: isDark ? Colors.white60 : Colors.grey[500],
@@ -120,20 +188,15 @@ class AdviceDetailPage extends StatelessWidget {
 
             const SizedBox(height: 20),
 
+            // Advice card
             CompCard(
               isDark: isDark,
               children: [
-                CompDate(
-                  date: formattedDate, // <--- GÜNCELLENDİ
-                  isDark: isDark,
-                ),
+                CompDate(date: formattedDate, isDark: isDark),
                 const SizedBox(height: 10),
                 CompTitle(title: title, isDark: isDark),
                 const SizedBox(height: 16),
-                CompBody(
-                  text: AdviceUtils.getAdvice(analysisItem),
-                  isDark: isDark,
-                ),
+                CompBody(text: adviceText, isDark: isDark),
               ],
             ),
 
@@ -169,6 +232,11 @@ class AdviceDetailPage extends StatelessWidget {
                   _buildDetailRow(
                     'Zodiac Sign',
                     analysisItem['sign'] ?? 'Not specified',
+                    isDark,
+                  ),
+                  _buildDetailRow(
+                    'Advice Status',
+                    analysisItem['has_advice'] == true ? 'Seen' : 'Not seen',
                     isDark,
                   ),
                 ],
@@ -227,6 +295,8 @@ class AdviceDetailPage extends StatelessWidget {
         return Colors.blueAccent;
       case 'confused':
         return Colors.yellow;
+      case 'neutral':
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -246,6 +316,8 @@ class AdviceDetailPage extends StatelessWidget {
         return '😌';
       case 'confused':
         return '😕';
+      case 'neutral':
+        return '😐';
       default:
         return '😊';
     }

@@ -862,67 +862,52 @@ class SaveAnalysisRequest(BaseModel):
     sign: str = "unknown"
     has_advice: bool = True
 
+
 @app.post("/analyses")
-async def save_analysis(request: SaveAnalysisRequest):
-    """Save an analysis result (for backward compatibility)"""
+async def save_analysis(payload: SaveAnalysisRequest):
     try:
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
-        
-        # Extract data with defaults
-        diary_id = safe_int(request.diary_id, 0)
-        analysis_key = request.analysis_key or create_analysis_key(
-            request.user_id, 
-            diary_id
+
+        analysis_key = payload.analysis_key or create_analysis_key(
+            payload.user_id, payload.diary_id
         )
-        
-        # Check if analysis already exists
-        existing = await connection_pool.fetchval('''
-            SELECT id FROM analyses WHERE analysis_key = $1
-        ''', analysis_key)
-        
-        if existing:
-            # Update existing
-            await connection_pool.execute('''
-                UPDATE analyses 
-                SET advice = $1, mood = $2, mood_source = $3, updated_at = CURRENT_TIMESTAMP
-                WHERE analysis_key = $4
-            ''', request.advice, 
-                 request.mood,
-                 request.mood_source,
-                 analysis_key)
-            action = "updated"
-        else:
-            # Insert new
-            await connection_pool.execute('''
-                INSERT INTO analyses (
-                    analysis_key, diary_id, user_id, advice, mood, 
-                    mood_source, character_type, sign, has_advice
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ''', 
+
+        await connection_pool.execute(
+            '''
+            INSERT INTO analyses (
                 analysis_key,
                 diary_id,
-                request.user_id,
-                request.advice,
-                request.mood,
-                request.mood_source,
-                request.character_type,
-                request.sign,
-                request.has_advice
+                user_id,
+                advice,
+                mood,
+                mood_source,
+                character_type,
+                sign,
+                has_advice
             )
-            action = "created"
-        
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            ''',
+            analysis_key,
+            payload.diary_id or 0,
+            payload.user_id,
+            payload.advice,
+            payload.mood,
+            payload.mood_source,
+            payload.character_type,
+            payload.sign,
+            payload.has_advice
+        )
+
         return {
-            "message": f"Analysis {action} successfully",
-            "analysis_key": analysis_key,
             "status": "success",
-            "action": action
+            "analysis_key": analysis_key
         }
-        
+
     except Exception as e:
-        logger.error(f"Error saving analysis: {e}", exc_info=True)
+        logger.error(f"❌ Failed to save analysis: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save analysis")
+
 
 # ============== OTHER ENDPOINTS ==============
 

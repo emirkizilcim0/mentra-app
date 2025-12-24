@@ -1,5 +1,7 @@
 // lib/services/diary_service.dart
 
+import 'dart:convert' as json;
+import 'package:http/http.dart' as http;
 import 'package:mentra_app/services/dairy/dairy_repo_delete.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_analyze.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_fetch.dart';
@@ -9,6 +11,7 @@ import 'package:mentra_app/services/dairy/dairy_repo_save.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_single.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_stats.dart';
 import 'package:mentra_app/services/dairy/dairy_repo_update.dart';
+import 'package:mentra_app/pages/chat/logic_data.dart';
 
 class DiaryService {
   static List<Map<String, dynamic>>? _diariesCache;
@@ -80,22 +83,65 @@ class DiaryService {
   }
   // -------------------------
 
+  // In your DiaryService class
   static Future<List<Map<String, dynamic>>> getAnalysisHistory({
     int limit = 10,
+    String? userId,
   }) async {
-    final now = DateTime.now();
-    if (limit == 10 &&
-        _historyCache != null &&
-        _historyCacheAt != null &&
-        now.difference(_historyCacheAt!) < _ttl) {
-      return _historyCache!;
+    try {
+      // Get user ID from local storage
+      final userData = await LogicData.loadUserData();
+      final currentUserId =
+          userId ??
+          userData['id']?.toString() ??
+          userData['_id']?.toString() ??
+          'unknown';
+
+      final url = Uri.parse(
+        'https://mentra-app-b2ei.onrender.com/analysis/history/$currentUserId?limit=$limit',
+      );
+
+      print('🔍 Fetching analysis history for user: $currentUserId');
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+
+      print('📡 Response status: ${response.statusCode}');
+      print('📡 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.jsonDecode(response.body);
+
+        // Check the structure of the response
+        print('📊 Parsed data keys: ${data.keys.toList()}');
+
+        // The backend returns: {"analyses": [...]}
+        final List<dynamic> analysesList = data['analyses'] ?? [];
+        print('📄 Found ${analysesList.length} analyses');
+
+        // Convert to List<Map<String, dynamic>>
+        return analysesList.map((item) {
+          if (item is Map<String, dynamic>) {
+            return item;
+          } else if (item is Map) {
+            return Map<String, dynamic>.from(item);
+          } else {
+            return <String, dynamic>{};
+          }
+        }).toList();
+      } else {
+        print('❌ Error fetching analysis history: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Exception in getAnalysisHistory: $e');
+      return [];
     }
-    final list = await DiaryRepoHistory.getHistory(limit: limit);
-    if (limit == 10) {
-      _historyCache = list;
-      _historyCacheAt = now;
-    }
-    return list;
   }
 
   static Future<Map<String, dynamic>> getUserStatistics() =>

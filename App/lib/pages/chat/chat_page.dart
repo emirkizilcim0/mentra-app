@@ -105,7 +105,7 @@ class _ChatPageState extends State<ChatPage> {
       analysisData['has_advice'] = true;
 
       final response = await http.post(
-        Uri.parse('https://mentra-app-b2ei.onrender.com/analyses'),
+        Uri.parse('https://mentra-app.onrender.com/analyses'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
