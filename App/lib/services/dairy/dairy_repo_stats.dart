@@ -4,9 +4,9 @@ import 'package:mentra_app/services/dairy/dairy_repo_history.dart';
 import 'package:flutter/foundation.dart';
 
 class DiaryRepoStats {
-  static Future<Map<String, dynamic>> getStats() async {
+  static Future<Map<String, dynamic>> getStats(String userId) async {
     try {
-      final diaries = await DiaryRepoFetch.getAll();
+      final diaries = await DiaryRepoFetch.getAll(userId: userId);
       final analyses = await DiaryRepoHistory.getHistory();
       final moodCounts = <String, int>{};
 

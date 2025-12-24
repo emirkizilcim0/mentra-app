@@ -1,21 +1,43 @@
-// lib/services/diary/diary_repo_single.dart
-import 'package:mentra_app/services/dairy/dairy_repo_fetch.dart';
-import 'package:flutter/foundation.dart';
+// dairy_repo_single.dart
+import 'dart:convert' as json;
+import 'package:http/http.dart' as http;
 
 class DiaryRepoSingle {
-  static Future<Map<String, dynamic>> get(String diaryId) async {
+  static Future<Map<String, dynamic>> get(
+    String id, {
+    required String userId,
+  }) async {
     try {
-      // Önce hepsini çekip sonra filtreliyoruz
-      final diaries = await DiaryRepoFetch.getAll();
-
-      return diaries.firstWhere(
-        (diary) => diary['id'] == diaryId,
-        orElse: () => throw Exception('Diary not found'),
+      // First get all diaries and find the specific one
+      final allDiariesUrl = Uri.parse(
+        'https://mentra-app-b2ei.onrender.com/diaries/$userId?limit=100',
       );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ Error getting diary entry: $e');
+
+      final response = await http.get(
+        allDiariesUrl,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.jsonDecode(response.body);
+        final List<dynamic> diaries = data['diaries'];
+
+        // Find the diary with matching ID
+        for (var diary in diaries) {
+          if (diary['id'].toString() == id) {
+            return Map<String, dynamic>.from(diary);
+          }
+        }
+
+        throw Exception('Diary not found: $id');
+      } else {
+        throw Exception('Failed to get diary: ${response.statusCode}');
       }
+    } catch (e) {
+      print('❌ Error getting diary: $e');
       rethrow;
     }
   }

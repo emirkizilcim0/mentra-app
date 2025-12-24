@@ -12,6 +12,7 @@ import 'chat_view.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:mentra_app/services/advice_notifier.dart';
+import 'package:mentra_app/services/dairy/dairy_auth.dart';
 
 class ChatPage extends StatefulWidget {
   final DateTime? selectedDate;
@@ -67,8 +68,12 @@ class _ChatPageState extends State<ChatPage> {
       print('   diary_id: ${data['diary_id']}');
       print('   advice length: ${data['advice']?.toString().length ?? 0}');
 
+      final userId = DiaryAuth.getUserId();
+
       final res = await http.post(
-        Uri.parse('https://mentra-app-b2ei.onrender.com/analyses'),
+        Uri.parse(
+          'https://mentra-app-b2ei.onrender.com/analyses?user_id=$userId',
+        ),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(data),
       );
@@ -85,11 +90,13 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  // --- PostgreSQL API'DEN ANALİZLERİ ÇEK ---
   Future<List<Map<String, dynamic>>> _fetchAnalysesFromAPI() async {
     try {
+      final userId = DiaryAuth.getUserId();
       final response = await http.get(
-        Uri.parse('https://mentra-app-b2ei.onrender.com/analyses'),
+        Uri.parse(
+          'https://mentra-app-b2ei.onrender.com/analyses?user_id=$userId',
+        ),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -99,18 +106,17 @@ class _ChatPageState extends State<ChatPage> {
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
 
-        // Process each analysis to ensure has_advice is true
         return data.map<Map<String, dynamic>>((item) {
           final analysis = item as Map<String, dynamic>;
 
-          analysis['has_advice'] = true;
-          analysis['seen'] = analysis['seen'] ?? false; // ✅ ADD
-
-          if (analysis['diary_id'] == null && analysis['id'] != null) {
-            analysis['diary_id'] = analysis['id'].toString();
-          }
-
-          return analysis;
+          return {
+            'diary_id': analysis['diary_id']?.toString(),
+            'advice': analysis['advice'] ?? '',
+            'analysis': analysis['analysis'] ?? '',
+            'mood': analysis['mood'] ?? 'Calm',
+            'has_advice': true,
+            'seen': analysis['seen'] ?? false,
+          };
         }).toList();
       } else {
         print('API Error: ${response.statusCode} - ${response.body}');
@@ -122,12 +128,6 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  void _notifyNewAdviceCreated() {
-    print('📢 New advice created - should trigger refresh in AdvicePage');
-    // You could use a Provider/Notifier here, but for now we'll rely on the refresh
-    // when AdvicePage becomes visible again
-  }
-
   Future<void> _loadDiaries() async {
     setState(() {
       loading = true;
@@ -135,8 +135,8 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     try {
-      // 1. Load diaries from phone
-      final items = await LogicData.loadDiaries();
+      // 1. Load diaries from backend
+      final items = await DiaryService.getDiaryEntries();
 
       // 2. Load analyses from PostgreSQL API
       final List<Map<String, dynamic>> analysesList =
@@ -149,12 +149,11 @@ class _ChatPageState extends State<ChatPage> {
           item['formattedDate'] = _formatDate(item['date']);
         }
 
-        String localId =
-            item['id']?.toString() ?? item['_id']?.toString() ?? "";
+        String diaryId = item['id']?.toString() ?? "";
 
         // Find matching analysis in database
         final matchingAnalysis = analysesList.firstWhere(
-          (analysis) => analysis['diary_id'].toString() == localId,
+          (analysis) => analysis['diary_id'].toString() == diaryId,
           orElse: () => {},
         );
 
@@ -163,10 +162,10 @@ class _ChatPageState extends State<ChatPage> {
           item['analysis'] = matchingAnalysis['analysis'] ?? '';
           item['mood'] = matchingAnalysis['mood'] ?? 'Calm';
           item['has_advice'] = true;
-          item['seen'] = matchingAnalysis['seen'] ?? false; // ✅ ADD
+          item['seen'] = matchingAnalysis['seen'] ?? false;
         } else {
           item['has_advice'] = false;
-          item['seen'] = false; // ✅ ADD
+          item['seen'] = false;
         }
       }
 
@@ -206,12 +205,8 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  // --- ADVICE FONKSİYONU ---
   Future<void> _getAdvice(Map<String, dynamic>? entry) async {
     if (_isAnalyzing) return;
-
-    final user = await LogicData.loadUserData();
-    final userId = user['id'];
 
     setState(() {
       _isAnalyzing = true;
@@ -220,11 +215,10 @@ class _ChatPageState extends State<ChatPage> {
     print("📢 1. BAŞLANGIÇ: _getAdvice çalıştı.");
 
     try {
-      String? currentId;
-      // ✅ Mark advice as seen (local UI)
+      String? diaryId;
 
       if (entry != null) {
-        currentId = entry['id']?.toString() ?? entry['_id']?.toString();
+        diaryId = entry['id']?.toString() ?? "";
 
         // PERMANENT CHECK: If diary already has advice in PostgreSQL
         if (entry['has_advice'] == true) {
@@ -234,7 +228,7 @@ class _ChatPageState extends State<ChatPage> {
           Map<String, dynamic> viewData = {
             'date': entry['date'],
             'formattedDate': _formatDate(entry['date']),
-            'diary_id': currentId,
+            'diary_id': diaryId,
             'advice': entry['advice'] ?? '',
             'analysis': entry['analysis'] ?? '',
             'mood': entry['mood'] ?? 'Calm',
@@ -243,24 +237,24 @@ class _ChatPageState extends State<ChatPage> {
             'has_advice': true,
             'seen': true,
           };
-          _notifyNewAdviceCreated();
+
           AdviceNotifier().notifyNewAdviceCreated();
 
           setState(() {
             _isAnalyzing = false;
           });
 
-          // ✅ MARK AS SEEN (correct place)
+          // ✅ MARK AS SEEN
           setState(() {
             entry['seen'] = true;
           });
 
-          // backend update
-          http.patch(
-            Uri.parse('https://mentra-app.onrender.com/analyses/$currentId'),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({'seen': true}),
-          );
+          // Mark as seen in backend
+          if (entry['analysis_id'] != null) {
+            await DiaryService.markAnalysisAsSeen(
+              int.parse(entry['analysis_id'].toString()),
+            );
+          }
 
           Navigator.push(
             context,
@@ -275,7 +269,7 @@ class _ChatPageState extends State<ChatPage> {
         }
       }
 
-      print("📢 3. ID TESPİTİ: İşlem yapılacak ID: $currentId");
+      print("📢 3. ID TESPİTİ: İşlem yapılacak ID: $diaryId");
 
       // AI Analizi
       print("📢 4. DURUM: AI servisine gidiliyor...");
@@ -287,7 +281,7 @@ class _ChatPageState extends State<ChatPage> {
         specificContent: entry != null
             ? (entry['content'] ?? entry['text'] ?? "")
             : null,
-        specificIds: currentId != null ? [currentId] : null,
+        specificIds: diaryId != null ? [diaryId] : null,
       );
       print("📢 5. DURUM: AI cevabı geldi.");
 
@@ -300,12 +294,12 @@ class _ChatPageState extends State<ChatPage> {
         final first = response['results'][0];
 
         finalData['advice'] = first['advice'] ?? '';
-        finalData['analysis'] = first['advice'] ?? ''; // reuse text if you want
+        finalData['analysis'] = first['advice'] ?? '';
         finalData['mood'] = first['mood'] ?? 'Calm';
       } else {
-        finalData['advice'] = '';
-        finalData['analysis'] = '';
-        finalData['mood'] = 'Calm';
+        finalData['advice'] = response['advice'] ?? '';
+        finalData['analysis'] = response['advice'] ?? '';
+        finalData['mood'] = response['mood'] ?? 'Calm';
       }
 
       // Prepare data for navigation
@@ -313,44 +307,33 @@ class _ChatPageState extends State<ChatPage> {
       finalData['formattedDate'] = entry != null
           ? _formatDate(entry['date'])
           : '';
-      finalData['diary_id'] = currentId;
-      finalData['has_advice'] = true; // Always true after getting advice
+      finalData['diary_id'] = diaryId;
+      finalData['has_advice'] = true;
       finalData['character_type'] = type;
       finalData['sign'] = sign;
       finalData['mood'] ??= 'Calm';
 
-      // In your chat_page.dart, update the save call in _getAdvice method:
-      if (currentId != null && finalData['advice'].toString().isNotEmpty) {
-        // ✅ FIX: Get user data properly
-        final user = await LogicData.loadUserData();
-        final String userId =
-            user['id']?.toString() ??
-            user['_id']?.toString() ??
-            user['user_id']?.toString() ??
-            'unknown';
-
-        print('💾 Saving analysis for user: $userId, diary: $currentId');
-
-        // ✅ FIX: Include ALL required fields
-        final saveData = {
-          'user_id': userId, // ✅ REQUIRED
-          'diary_id': int.tryParse(currentId) ?? 0, // ✅ Should be integer
-          'advice': finalData['advice'],
-          'analysis': finalData['analysis'],
-          'mood': finalData['mood'] ?? 'Calm',
-          'mood_source': 'ai_detected', // ✅ REQUIRED
-          'character_type': type,
-          'sign': sign,
-          'has_advice': true,
-          'seen': false,
-        };
-
-        print('📦 Save data: ${saveData.keys.toList()}');
-
-        await _saveAnalysisToAPI(saveData);
-
-        // Also call the notification
-        AdviceNotifier().notifyNewAdviceCreated();
+      // Save analysis to database
+      if (diaryId != null &&
+          diaryId.isNotEmpty &&
+          finalData['advice'].toString().isNotEmpty) {
+        try {
+          await DiaryService.saveAnalysis(
+            diaryId: int.parse(diaryId),
+            advice: finalData['advice'].toString(),
+            analysis: finalData['analysis'].toString(),
+            characterType: type,
+            sign: sign,
+            mood: finalData['mood'].toString(),
+            moodSource: 'ai_detected',
+            hasAdvice: true,
+            seen: false,
+          );
+          AdviceNotifier().notifyNewAdviceCreated();
+          print('✅ Analysis saved to database');
+        } catch (e) {
+          print('⚠️ Failed to save analysis: $e');
+        }
       }
 
       if (mounted && entry != null) {

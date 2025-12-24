@@ -2,24 +2,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:mentra_app/models/mood_data.dart';
-import 'package:mentra_app/pages/chat/logic_data.dart';
+import 'package:mentra_app/services/dairy/dairy_auth.dart';
 
 enum MoodRange { day, week, month }
 
 class MoodRepository {
   Future<List<MoodData>> fetchMoodTrend(MoodRange range) async {
     try {
-      // Get user ID from local storage
-      final userData = await LogicData.loadUserData();
-      final userId =
-          userData['id']?.toString() ??
-          userData['_id']?.toString() ??
-          userData['user_id']?.toString() ??
-          'unknown';
+      // Get Firebase user ID
+      final userId = DiaryAuth.getUserId();
+      print('🔍 Fetching mood data for Firebase user: $userId, range: $range');
 
-      print('🔍 Fetching mood data for user: $userId, range: $range');
-
-      // ✅ FIX: Use /analyses endpoint instead of /analysis/history
+      // ✅ Use /analyses endpoint with user_id query parameter
       final uri = Uri.parse(
         'https://mentra-app-b2ei.onrender.com/analyses?user_id=$userId&limit=100',
       );
@@ -34,7 +28,6 @@ class MoodRepository {
 
       if (response.statusCode == 200) {
         final List<dynamic> analyses = json.decode(response.body);
-
         print('📊 Found ${analyses.length} analyses from API');
 
         // Convert API data to MoodData objects

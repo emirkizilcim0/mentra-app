@@ -1,29 +1,31 @@
-// lib/services/diary/diary_repo_delete.dart
-import 'package:flutter/foundation.dart';
-import 'package:mentra_app/services/dairy/dairy_auth.dart';
-import 'package:mentra_app/services/dairy/dairy_config.dart';
+// dairy_repo_delete.dart
+import 'dart:convert' as json;
+import 'package:http/http.dart' as http;
 
 class DiaryRepoDelete {
-  static Future<void> delete(String diaryId) async {
+  static Future<void> delete(String id, {required String userId}) async {
     try {
-      final uid = DiaryAuth.getUserId();
-      final uri = Uri.parse(
-        '${DiaryConfig.baseUrl}/diaries/$diaryId?user_id=$uid',
+      final url = Uri.parse(
+        'https://mentra-app-b2ei.onrender.com/diaries/$id?user_id=$userId',
       );
 
-      final response = await DiaryConfig.client.delete(uri, headers: DiaryConfig.getHeaders);
+      print('🗑️ Deleting diary $id for user: $userId');
 
-      if (response.statusCode == 200) {
-        if (kDebugMode) {
-          debugPrint('✅ Diary deleted: $diaryId');
-        }
-      } else {
-        throw Exception('Failed delete: ${response.statusCode}');
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Failed to delete: ${response.statusCode} - ${response.body}',
+        );
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('❌ Error deleting: $e');
-      }
+      print('❌ Error deleting diary: $e');
       rethrow;
     }
   }

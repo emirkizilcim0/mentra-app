@@ -1,24 +1,29 @@
-// lib/services/diary/diary_repo_fetch.dart
+// lib/services/diary/dairy_repo_fetch.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:mentra_app/services/dairy/dairy_auth.dart';
 import 'package:mentra_app/services/dairy/dairy_config.dart';
 import 'package:mentra_app/services/dairy/dairy_mapper.dart';
 
 class DiaryRepoFetch {
-  static Future<List<Map<String, dynamic>>> getAll() async {
+  static Future<List<Map<String, dynamic>>> getAll({
+    required String userId,
+  }) async {
     try {
-      final uid = DiaryAuth.getUserId();
-      final uri = Uri.parse('${DiaryConfig.baseUrl}/diaries/$uid?limit=50');
+      final uri = Uri.parse('${DiaryConfig.baseUrl}/diaries/$userId?limit=50');
 
-      final response = await DiaryConfig.client.get(uri, headers: DiaryConfig.getHeaders);
+      final response = await DiaryConfig.client.get(
+        uri,
+        headers: DiaryConfig.getHeaders,
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final List<dynamic> list = data['diaries'];
         return list.map((e) => DiaryMapper.mapEntry(e)).toList();
       }
-      throw Exception('Failed fetch: ${response.statusCode}');
+      throw Exception(
+        'Failed fetch: ${response.statusCode} - ${response.body}',
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Error getting diaries: $e');

@@ -145,26 +145,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  bool isSameDay(dynamic dateValue, String searchKey) {
-    try {
-      DateTime d;
-
-      if (dateValue is Timestamp) {
-        d = dateValue.toDate();
-      } else if (dateValue is DateTime) {
-        d = dateValue;
-      } else {
-        d = DateTime.parse(dateValue.toString());
-      }
-
-      final key =
-          "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
-      return key == searchKey;
-    } catch (_) {
-      return false;
-    }
-  }
-
   void _showDetails(int d, int m, int y) {
     // 1. Tarih formatlama
     String year = y.toString();
@@ -211,7 +191,7 @@ class _HomePageState extends State<HomePage> {
       // B. Günlükleri yükle ve o güne ait olanları bul
       final allDiaries = await LogicData.loadDiaries();
       List<Map<String, dynamic>> dailyEntries = allDiaries
-          .where((e) => isSameDay(e['date'], searchKey))
+          .where((e) => e['date'].toString().contains(searchKey))
           .toList();
 
       if (dailyEntries.isEmpty) {
@@ -253,9 +233,7 @@ class _HomePageState extends State<HomePage> {
 
             if (querySnapshot.docs.isNotEmpty) {
               // Firebase'de bulunduysa listeye ekle
-              final analysis = querySnapshot.docs.first.data();
-              final merged = Map<String, dynamic>.from(entry)..addAll(analysis);
-              diariesWithAdvice.add(merged);
+              diariesWithAdvice.add(entry);
             }
           } catch (e) {
             print("Firebase kontrol hatası: $e");
@@ -282,9 +260,6 @@ class _HomePageState extends State<HomePage> {
         }
       } else if (diariesWithAdvice.length == 1) {
         // 2. DURUM: Sadece 1 tanesinin tavsiyesi var -> Direkt Aç
-        if (mounted && Navigator.canPop(context))
-          Navigator.pop(context); // close loading
-
         _processAdviceForEntry(diariesWithAdvice.first, userType, userSign);
       } else {
         // 3. DURUM: Birden fazla tavsiyeli günlük var -> Sadece bunları listele

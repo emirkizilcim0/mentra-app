@@ -1,14 +1,15 @@
 // lib/services/diary/diary_saver.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:mentra_app/services/dairy/dairy_auth.dart';
 import 'package:mentra_app/services/dairy/dairy_config.dart';
+import 'package:mentra_app/services/dairy/dairy_auth.dart';
 
 class DiarySaver {
   static Future<Map<String, dynamic>> save(Map<String, dynamic> entry) async {
     try {
-      final uid = DiaryAuth.getRequiredId();
-      final url = '${DiaryConfig.baseUrl}/diaries/save?user_id=$uid';
+      // Get Firebase user ID
+      final userId = DiaryAuth.getUserId();
+      final url = '${DiaryConfig.baseUrl}/diaries/save?user_id=$userId';
 
       final response = await DiaryConfig.client.post(
         Uri.parse(url),

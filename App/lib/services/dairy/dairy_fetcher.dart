@@ -8,16 +8,18 @@ import 'package:mentra_app/services/dairy/dairy_mapper.dart';
 class DiaryFetcher {
   static Future<List<Map<String, dynamic>>> getAll() async {
     try {
-      final uid = DiaryAuth.getRequiredId();
-      final uri = Uri.parse('${DiaryConfig.baseUrl}/diaries/$uid?limit=50');
+      // Get Firebase user ID
+      final userId = DiaryAuth.getUserId();
+      final uri = Uri.parse('${DiaryConfig.baseUrl}/diaries/$userId?limit=50');
 
-      final response = await DiaryConfig.client.get(uri, headers: DiaryConfig.getHeaders);
+      final response = await DiaryConfig.client.get(
+        uri,
+        headers: DiaryConfig.getHeaders,
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final List<dynamic> rawList = data['diaries'];
-
-        // DÜZELTME: mapList yerine, listeyi .map ile dönüp tek tek mapEntry çağırıyoruz
         return rawList.map((e) => DiaryMapper.mapEntry(e)).toList();
       }
       throw Exception('Failed: ${response.statusCode} - ${response.body}');

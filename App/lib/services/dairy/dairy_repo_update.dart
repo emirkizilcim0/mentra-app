@@ -1,19 +1,27 @@
-// lib/services/diary/diary_repo_update.dart
-import 'package:http/http.dart' as DiaryRepoDelete;
-import 'package:mentra_app/services/dairy/dairy_repo_save.dart';
+// dairy_repo_update.dart
+import 'dart:convert' as json;
+import 'package:http/http.dart' as http;
 
 class DiaryRepoUpdate {
   static Future<Map<String, dynamic>> update(
-    String diaryId,
-    Map<String, dynamic> updates,
-  ) async {
+    String id,
+    Map<String, dynamic> updates, {
+    required String userId,
+  }) async {
     try {
-      // Not: Backend update endpoint'i olmadığı için önce silip sonra ekliyoruz
-      await DiaryRepoDelete.delete(diaryId as Uri);
-      final newEntry = await DiaryRepoSave.save(updates);
-      return newEntry;
+      // Note: Your FastAPI doesn't have an update endpoint yet
+      // This is a placeholder - you need to add an update endpoint to FastAPI
+      print('📝 Updating diary $id for user: $userId');
+
+      // For now, just return the updates
+      return {
+        ...updates,
+        'id': id,
+        'status': 'update_not_implemented',
+        'message': 'Update endpoint not implemented in backend',
+      };
     } catch (e) {
-      print('❌ Error updating diary entry: $e');
+      print('❌ Error updating diary: $e');
       rethrow;
     }
   }
