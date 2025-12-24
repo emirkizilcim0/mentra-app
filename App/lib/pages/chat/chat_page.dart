@@ -76,10 +76,9 @@ class _ChatPageState extends State<ChatPage> {
         return data.map<Map<String, dynamic>>((item) {
           final analysis = item as Map<String, dynamic>;
 
-          // Ensure has_advice is always true from PostgreSQL
           analysis['has_advice'] = true;
+          analysis['seen'] = analysis['seen'] ?? false; // ✅ ADD
 
-          // Also ensure the diary_id field exists (some APIs might use different names)
           if (analysis['diary_id'] == null && analysis['id'] != null) {
             analysis['diary_id'] = analysis['id'].toString();
           }
@@ -93,38 +92,6 @@ class _ChatPageState extends State<ChatPage> {
     } catch (e) {
       print('Fetch analyses error: $e');
       return [];
-    }
-  }
-
-  // --- PostgreSQL API'YE ANALİZ KAYDET ---
-  Future<bool> _saveAnalysisToAPI(Map<String, dynamic> analysisData) async {
-    try {
-      print('📤 Saving analysis for diary: ${analysisData['diary_id']}');
-
-      // Ensure has_advice is always true
-      analysisData['has_advice'] = true;
-
-      final response = await http.post(
-        Uri.parse('https://mentra-app.onrender.com/analyses'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode(analysisData),
-      );
-
-      if (response.statusCode == 200 ||
-          response.statusCode == 201 ||
-          response.statusCode == 404) {
-        print('✅ Analysis saved to PostgreSQL with has_advice=true');
-        return true;
-      } else {
-        print('❌ API Save Error: ${response.statusCode} - ${response.body}');
-        return false;
-      }
-    } catch (e) {
-      print('❌ API Save Exception: $e');
-      return false;
     }
   }
 
@@ -159,14 +126,14 @@ class _ChatPageState extends State<ChatPage> {
         );
 
         if (matchingAnalysis.isNotEmpty) {
-          // Diary HAS advice in PostgreSQL - PERMANENT
           item['advice'] = matchingAnalysis['advice'] ?? '';
           item['analysis'] = matchingAnalysis['analysis'] ?? '';
           item['mood'] = matchingAnalysis['mood'] ?? 'Calm';
-          item['has_advice'] = true; // CRITICAL: From PostgreSQL
+          item['has_advice'] = true;
+          item['seen'] = matchingAnalysis['seen'] ?? false; // ✅ ADD
         } else {
-          // Diary has NO advice in database
           item['has_advice'] = false;
+          item['seen'] = false; // ✅ ADD
         }
       }
 
@@ -210,6 +177,9 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _getAdvice(Map<String, dynamic>? entry) async {
     if (_isAnalyzing) return;
 
+    final user = await LogicData.loadUserData();
+    final userId = user['id'];
+
     setState(() {
       _isAnalyzing = true;
     });
@@ -218,6 +188,8 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       String? currentId;
+      // ✅ Mark advice as seen (local UI)
+
       if (entry != null) {
         currentId = entry['id']?.toString() ?? entry['_id']?.toString();
 
@@ -241,6 +213,18 @@ class _ChatPageState extends State<ChatPage> {
           setState(() {
             _isAnalyzing = false;
           });
+
+          // ✅ MARK AS SEEN (correct place)
+          setState(() {
+            entry['seen'] = true;
+          });
+
+          // backend update
+          http.patch(
+            Uri.parse('https://mentra-app.onrender.com/analyses/$currentId'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'seen': true}),
+          );
 
           Navigator.push(
             context,
@@ -272,46 +256,6 @@ class _ChatPageState extends State<ChatPage> {
       print("📢 5. DURUM: AI cevabı geldi.");
 
       Map<String, dynamic> finalData = Map.of(response);
-
-      // --- KAYIT KISMI (POSTGRESQL API'YE KAYDET) ---
-      if (entry != null && currentId != null) {
-        print("📢 6. DURUM: PostgreSQL API'ye yazma işlemi başlıyor...");
-
-        // Save to PostgreSQL API
-        final bool saveSuccess = await _saveAnalysisToAPI({
-          'diary_id': currentId,
-          'advice': finalData['advice'] ?? '',
-          'analysis': finalData['analysis'] ?? '',
-          'mood': finalData['mood'] ?? 'Calm',
-          'character_type': type,
-          'sign': sign,
-          'has_advice': true, // PERMANENT flag
-          'created_at': DateTime.now().toIso8601String(),
-        });
-
-        if (saveSuccess) {
-          print("✅✅✅ 7. BAŞARI: POSTGRESQL API'YE KAYDEDİLDİ! ✅✅✅");
-
-          // Update UI immediately
-          if (mounted) {
-            setState(() {
-              // Find and update the diary in the list
-              for (int i = 0; i < diaries.length; i++) {
-                String? entryId =
-                    diaries[i]['id']?.toString() ??
-                    diaries[i]['_id']?.toString();
-                if (entryId == currentId) {
-                  diaries[i]['advice'] = finalData['advice'] ?? '';
-                  diaries[i]['analysis'] = finalData['analysis'] ?? '';
-                  diaries[i]['mood'] = finalData['mood'] ?? 'Calm';
-                  diaries[i]['has_advice'] = true; // PERMANENT
-                  break;
-                }
-              }
-            });
-          }
-        }
-      }
 
       // Prepare data for navigation
       finalData['date'] = entry?['date'];

@@ -140,6 +140,7 @@ async def migrate_database_schema(conn):
         if analyses_exists:
             await conn.execute("""
         ALTER TABLE analyses
+        ADD COLUMN IF NOT EXISTS seen BOOLEAN DEFAULT FALSE;
         ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
         """)
             # Check if user_id column exists
@@ -285,9 +286,10 @@ CREATE TABLE IF NOT EXISTS analyses (
     character_type VARCHAR(100),
     sign VARCHAR(100),
     has_advice BOOLEAN DEFAULT TRUE,
+    seen BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+);
     ''')
     
     logger.info("Ensured all tables exist")
@@ -474,7 +476,7 @@ async def get_user_diaries(user_id: str, limit: int = 20):
             
             # Get the latest analysis for this diary
             analysis = await connection_pool.fetchrow('''
-                SELECT mood, mood_source, advice
+                SELECT mood, mood_source, advice, seen
                 FROM analyses 
                 WHERE user_id = $1 AND diary_id = $2
                 ORDER BY created_at DESC 
@@ -489,17 +491,18 @@ async def get_user_diaries(user_id: str, limit: int = 20):
             diary_list.append({
                 "id": diary_id,
                 "content": diary["content"],
-                "mood": display_mood,  # This will now show "Angry" correctly!
+                "mood": display_mood,
                 "mood_confidence": diary["mood_confidence"],
                 "advice_preview": diary["advice_preview"],
                 "tags": diary["tags"],
                 "date": diary["created_at"].isoformat(),
-                "has_analysis": analysis is not None
+                "has_advice": analysis is not None,
+                "seen": analysis["seen"] if analysis else False
             })
         
         return {
             "diaries": diary_list,
-            "total": len(diary_list)
+            "total": len(diary_list),
         }
         
     except Exception as e:
@@ -627,11 +630,23 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                     
                     # Insert into analyses table
                     await connection_pool.execute('''
-                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        INSERT INTO analyses (
+    analysis_key,
+    diary_id,
+    user_id,
+    advice,
+    mood,
+    mood_source,
+    character_type,
+    sign,
+    has_advice,
+    seen
+)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+
                     ''', analysis_key, diary_id, request.user_id, advice_text, 
                          final_mood, mood_source, request.character_type, 
-                         request.sign, True)
+                         request.sign, True, False)
                     
                     # Update the diary
                     advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
@@ -694,11 +709,22 @@ async def analyze_diaries(request: DiaryAnalysisRequest):
                     
                     # Insert analysis
                     await connection_pool.execute('''
-                        INSERT INTO analyses (analysis_key, diary_id, user_id, advice, mood, mood_source, character_type, sign, has_advice)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO analyses (
+    analysis_key,
+    diary_id,
+    user_id,
+    advice,
+    mood,
+    mood_source,
+    character_type,
+    sign,
+    has_advice,
+    seen
+)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                     ''', analysis_key, diary_id, request.user_id, advice_text, 
                          final_mood, mood_source, request.character_type, 
-                         request.sign, True)
+                         request.sign, True, False)
                     
                     # Update diary
                     advice_preview = advice_text[:200] + "..." if len(advice_text) > 200 else advice_text
@@ -820,22 +846,24 @@ async def get_user_analyses(
             ''')
 
         return [
-            {
-                "id": a["id"],
-                "analysis_key": a["analysis_key"],
-                "diary_id": a["diary_id"],
-                "user_id": a["user_id"],
-                "analysis": a["advice"],      # ✅ IMPORTANT (Flutter expects this)
-                "advice": a["advice"],
-                "mood": a["mood"],
-                "mood_source": a["mood_source"],
-                "character_type": a["character_type"],
-                "sign": a["sign"],
-                "has_advice": a["has_advice"],
-                "created_at": a["created_at"].isoformat()
-            }
+                {
+                    "id": a["id"],
+                    "analysis_key": a["analysis_key"],
+                    "diary_id": a["diary_id"],
+                    "user_id": a["user_id"],
+                    "analysis": a["advice"],
+                    "advice": a["advice"],
+                    "mood": a["mood"],
+                    "mood_source": a["mood_source"],
+                    "character_type": a["character_type"],
+                    "sign": a["sign"],
+                    "has_advice": a["has_advice"],
+                    "seen": a["seen"],
+                    "created_at": a["created_at"].isoformat()
+                }
             for a in analyses
         ]
+
 
     except Exception as e:
         logger.error(f"Error fetching analyses: {e}", exc_info=True)
@@ -861,11 +889,18 @@ class SaveAnalysisRequest(BaseModel):
     character_type: str = "default"
     sign: str = "unknown"
     has_advice: bool = True
+    seen: bool = False   # ✅ ADD
 
 
 @app.post("/analyses")
 async def save_analysis(payload: SaveAnalysisRequest):
     try:
+        if not payload.user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="user_id is required"
+            )
+
         if not connection_pool:
             raise HTTPException(status_code=500, detail="Database not configured")
 
@@ -875,18 +910,20 @@ async def save_analysis(payload: SaveAnalysisRequest):
 
         await connection_pool.execute(
             '''
-            INSERT INTO analyses (
-                analysis_key,
-                diary_id,
-                user_id,
-                advice,
-                mood,
-                mood_source,
-                character_type,
-                sign,
-                has_advice
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+INSERT INTO analyses (
+    analysis_key,
+    diary_id,
+    user_id,
+    advice,
+    mood,
+    mood_source,
+    character_type,
+    sign,
+    has_advice,
+    seen
+)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+ON CONFLICT (analysis_key) DO NOTHING
             ''',
             analysis_key,
             payload.diary_id or 0,
@@ -896,7 +933,8 @@ async def save_analysis(payload: SaveAnalysisRequest):
             payload.mood_source,
             payload.character_type,
             payload.sign,
-            payload.has_advice
+            payload.has_advice,
+            payload.seen
         )
 
         return {

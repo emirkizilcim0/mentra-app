@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
@@ -19,104 +20,210 @@ class AdviceDetailPage extends StatelessWidget {
     required this.title,
   });
 
-  // --- IMPROVED DATE FORMATTING FUNCTION ---
-  String _formatDateUS(Map<String, dynamic> item) {
-    // Try different date fields in order of priority
-    final dynamic rawDate =
-        item['formattedDate'] ??
-        item['created_at'] ??
-        item['date'] ??
-        item['analysis_date'] ??
-        DateTime.now();
+  // --- DEBUG: Print all data keys and values ---
+  void _debugPrintAnalysisData(Map<String, dynamic> item) {
+    print('🔍 DEBUG - Analysis Item Keys:');
+    item.forEach((key, value) {
+      print('  "$key": ${value?.toString() ?? "null"}');
+    });
 
-    if (rawDate == null) return 'Date not available';
+    if (item.containsKey('analysis_data')) {
+      print('📊 DEBUG - Analysis Data:');
+      if (item['analysis_data'] is Map) {
+        final analysisData = item['analysis_data'] as Map;
+        analysisData.forEach((key, value) {
+          print('  "$key": ${value?.toString() ?? "null"}');
+        });
+      } else {
+        print('  analysis_data type: ${item['analysis_data'].runtimeType}');
+        print('  analysis_data value: ${item['analysis_data']}');
+      }
+    }
+  }
+
+  // --- FIXED: BETTER DATE FORMATTING ---
+  String _formatDateUS(Map<String, dynamic> item) {
+    // Print debug info before processing
+    _debugPrintAnalysisData(item);
+
+    // Try multiple possible date fields
+    dynamic rawDate;
+
+    // Check in priority order
+    if (item['created_at'] != null) {
+      rawDate = item['created_at'];
+    } else if (item['date'] != null) {
+      rawDate = item['date'];
+    } else if (item['analysis_date'] != null) {
+      rawDate = item['analysis_date'];
+    } else if (item['formattedDate'] != null) {
+      rawDate = item['formattedDate'];
+    } else {
+      rawDate = DateTime.now();
+    }
 
     try {
       DateTime date;
+
       if (rawDate is DateTime) {
         date = rawDate;
       } else if (rawDate is String) {
-        // Handle different date string formats
-        if (rawDate.contains('T')) {
-          // ISO format: "2024-01-01T00:00:00Z"
-          date = DateTime.parse(rawDate);
-        } else if (rawDate.contains('-')) {
-          // Simple date format: "2024-01-01"
-          date = DateTime.parse(rawDate);
+        // Clean the date string
+        String dateStr = rawDate.trim();
+
+        // Handle different formats
+        if (dateStr.endsWith('Z')) {
+          date = DateTime.parse(dateStr);
+        } else if (dateStr.contains('T')) {
+          // Add Z if missing for ISO format
+          if (!dateStr.endsWith('Z')) {
+            dateStr = '${dateStr}Z';
+          }
+          date = DateTime.parse(dateStr);
+        } else if (dateStr.contains('-')) {
+          // Simple date without time
+          date = DateTime.parse(dateStr);
         } else {
-          // Try to parse as timestamp
-          final timestamp = int.tryParse(rawDate);
+          // Try parsing as timestamp
+          final timestamp = int.tryParse(dateStr);
           if (timestamp != null) {
-            date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+            if (timestamp > 1000000000000) {
+              // Likely milliseconds
+              date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+            } else {
+              // Likely seconds
+              date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+            }
           } else {
-            // Fallback to current date
             date = DateTime.now();
           }
         }
       } else if (rawDate is int) {
-        // Timestamp in milliseconds
-        date = DateTime.fromMillisecondsSinceEpoch(rawDate);
+        if (rawDate > 1000000000000) {
+          date = DateTime.fromMillisecondsSinceEpoch(rawDate);
+        } else {
+          date = DateTime.fromMillisecondsSinceEpoch(rawDate * 1000);
+        }
       } else {
-        // Unknown type, use current date
         date = DateTime.now();
       }
 
       // Format in US style: "December 20, 2025"
-      return DateFormat('d MMMM, yyyy', 'en_US').format(date.toLocal());
+      return DateFormat('MMMM d, yyyy', 'en_US').format(date.toLocal());
     } catch (e) {
-      print('Date parsing error: $e for rawDate: $rawDate');
-      return 'Date format error';
+      debugPrint('Date parsing error: $e for rawDate: $rawDate');
+      return 'Recent';
     }
   }
-  // ---------------------------------------------
 
-  // --- GET MOOD WITH FALLBACK ---
-  String _getSafeMood() {
-    final mood = analysisItem['mood']?.toString() ?? 'Calm';
-    // Ensure mood is one of the expected values
-    final validMoods = ['Happy', 'Sad', 'Anxious', 'Angry', 'Calm', 'Neutral'];
-    if (validMoods.contains(mood)) {
-      return mood;
+  // --- FIXED: BETTER MOOD EXTRACTION ---
+  String _getSafeMood(Map<String, dynamic> item) {
+    String? mood;
+
+    // 1️⃣ MOST IMPORTANT: results[0].mood (real diary mood)
+    if (item['results'] is List &&
+        item['results'].isNotEmpty &&
+        item['results'][0] is Map &&
+        item['results'][0]['mood'] != null) {
+      mood = item['results'][0]['mood'].toString().trim();
+      print('🎭 DEBUG - Using results[0].mood: $mood');
+    }
+    // 2️⃣ Fallback: analysis_data mood
+    else if (item['analysis_data'] is Map &&
+        item['analysis_data']['mood'] != null) {
+      mood = item['analysis_data']['mood'].toString().trim();
+      print('🎭 DEBUG - Using analysis_data.mood: $mood');
+    }
+    // 3️⃣ LAST fallback: top-level mood (often normalized)
+    else if (item['mood'] != null) {
+      mood = item['mood'].toString().trim();
+      print('🎭 DEBUG - Using top-level mood: $mood');
     }
 
-    // If mood is not valid, try to guess from content
-    final moodStr = mood.toLowerCase();
-    if (moodStr.contains('happy')) return 'Happy';
-    if (moodStr.contains('sad')) return 'Sad';
-    if (moodStr.contains('anxious') || moodStr.contains('stressed'))
-      return 'Anxious';
-    if (moodStr.contains('angry')) return 'Angry';
-    if (moodStr.contains('calm') || moodStr.contains('peaceful')) return 'Calm';
+    return (mood == null || mood.isEmpty) ? 'Calm' : mood;
+  }
 
-    return 'Calm'; // Default
+  // --- FIXED: BETTER ADVICE TEXT EXTRACTION ---
+  String _getAdviceText(Map<String, dynamic> item) {
+    String? adviceText;
+
+    print('📝 DEBUG - Checking advice fields:');
+    print('  advice: ${item['advice']}');
+    print('  advice_text: ${item['advice_text']}');
+    print('  analysis: ${item['analysis']}');
+    print('  results: ${item['results']}');
+
+    // 1️⃣ Direct fields
+    if (item['advice'] != null && item['advice'].toString().trim().isNotEmpty) {
+      adviceText = item['advice'].toString();
+      print('📝 DEBUG - Using item["advice"]');
+    }
+    // 2️⃣ analysis_data
+    else if (item['analysis_data'] is Map &&
+        item['analysis_data']['advice'] != null &&
+        item['analysis_data']['advice'].toString().trim().isNotEmpty) {
+      adviceText = item['analysis_data']['advice'].toString();
+      print('📝 DEBUG - Using analysis_data["advice"]');
+    }
+    // 3️⃣ ✅ FIX: results[0].advice (THIS WAS MISSING)
+    else if (item['results'] is List &&
+        item['results'].isNotEmpty &&
+        item['results'][0] is Map &&
+        item['results'][0]['advice'] != null &&
+        item['results'][0]['advice'].toString().trim().isNotEmpty) {
+      adviceText = item['results'][0]['advice'].toString();
+      print('📝 DEBUG - Using results[0]["advice"]');
+    }
+
+    // 4️⃣ Fallback
+    if (adviceText == null || adviceText.trim().isEmpty) {
+      print('⚠️ DEBUG - No advice text found');
+      print('  has_advice: ${item['has_advice']}');
+
+      if (item['has_advice'] == false) {
+        return 'No analysis was performed for this entry.';
+      }
+      return 'No specific advice available.';
+    }
+
+    print(
+      '✅ DEBUG - Found advice: ${adviceText.substring(0, min(60, adviceText.length))}...',
+    );
+
+    return adviceText.trim();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
-    final mood = _getSafeMood();
+
+    // Use the fixed extraction methods
+    final mood = _getSafeMood(analysisItem);
     final emoji = _getEmojiForMood(mood);
     final moodColor = _getMoodColor(mood);
-
-    // Get formatted date safely
     final formattedDate = _formatDateUS(analysisItem);
+    final adviceText = _getAdviceText(analysisItem);
 
-    // Get advice text safely
-    final normalizedAdvice =
-        analysisItem['advice'] ??
-        analysisItem['advice_text'] ??
-        analysisItem['analysis'] ??
-        analysisItem['analysis_data']?['advice'];
+    // Get other details
+    final diariesAnalyzed =
+        analysisItem['diaries_analyzed'] ??
+        analysisItem['analysis_data']?['individual_analyses'] ??
+        1;
 
-    final adviceText = normalizedAdvice?.toString().trim().isNotEmpty == true
-        ? normalizedAdvice.toString()
-        : 'No advice available.';
+    final characterType =
+        analysisItem['character_type'] ??
+        analysisItem['analysis_data']?['character_type'] ??
+        'Not specified';
 
-    // Get other details safely
-    final diariesAnalyzed = analysisItem['diary_id'] != null ? 1 : 0;
+    final sign =
+        analysisItem['sign'] ??
+        analysisItem['analysis_data']?['sign'] ??
+        'Not specified';
 
-    final characterType = analysisItem['character_type'] ?? 'Not specified';
-    final sign = analysisItem['sign'] ?? 'Not specified';
+    final birthMap =
+        analysisItem['birth_map'] ??
+        analysisItem['analysis_data']?['birth_map'] ??
+        'Not specified';
 
     return Scaffold(
       backgroundColor: AdviceColors.bg(isDark),
@@ -224,19 +331,19 @@ class AdviceDetailPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  _buildDetailRow('Character Type', characterType, isDark),
+                  _buildDetailRow('Zodiac Sign', sign, isDark),
+                  _buildDetailRow('Birth Map', birthMap, isDark),
                   _buildDetailRow(
-                    'Character Type',
-                    analysisItem['character_type'] ?? 'Not specified',
+                    'Analysis Type',
+                    analysisItem['analysis_type'] ?? 'Diary Analysis',
                     isDark,
                   ),
                   _buildDetailRow(
-                    'Zodiac Sign',
-                    analysisItem['sign'] ?? 'Not specified',
-                    isDark,
-                  ),
-                  _buildDetailRow(
-                    'Advice Status',
-                    analysisItem['has_advice'] == true ? 'Seen' : 'Not seen',
+                    'Status',
+                    analysisItem['has_advice'] == true
+                        ? 'Has Advice'
+                        : 'No Advice',
                     isDark,
                   ),
                 ],
@@ -293,8 +400,6 @@ class AdviceDetailPage extends StatelessWidget {
         return Colors.red;
       case 'calm':
         return Colors.blueAccent;
-      case 'confused':
-        return Colors.yellow;
       case 'neutral':
         return Colors.grey;
       default:
@@ -314,8 +419,6 @@ class AdviceDetailPage extends StatelessWidget {
         return '😠';
       case 'calm':
         return '😌';
-      case 'confused':
-        return '😕';
       case 'neutral':
         return '😐';
       default:
