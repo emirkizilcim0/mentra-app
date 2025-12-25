@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
 import 'package:mentra_app/services/dairy/dairy_service.dart';
@@ -8,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'advice_view_body.dart';
 import 'dart:math';
 import 'package:mentra_app/services/dairy/dairy_auth.dart';
+import 'advice_bottom_bar.dart';
 
 class AdvicePage extends StatefulWidget {
   final String? generatedAdvice;
@@ -242,29 +245,117 @@ class _AdvicePageState extends State<AdvicePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+    final double statusBarHeight = MediaQuery.of(context).padding.top;
 
     return Scaffold(
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       backgroundColor: isDark
           ? const Color(0xFF121212)
           : const Color(0xFFE8F4F9),
-      appBar: AppBar(
-        title: const Text('Advice'),
-        actions: [
-          IconButton(
-            onPressed: () => refreshData(),
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+      // Klasik AppBar kaldırıldı, body içinde Stack ile yönetiliyor
+      body: Stack(
+        children: [
+          // 1. ANA İÇERİK
+          Positioned.fill(
+            child: RefreshIndicator(
+              onRefresh: refreshData,
+              // Top padding, yüzen kapsül barın altında kalmaması için artırıldı
+              child: Padding(
+                padding: const EdgeInsets.only(top: 110, bottom: 100),
+                child: AdviceViewBody(
+                  isLoading: isLoading,
+                  errorMessage: errorMessage,
+                  analyses: analyses,
+                  isDark: isDark,
+                ),
+              ),
+            ),
           ),
+
+          // 2. ÜST YÜZEN BUTONLAR (Entegre edilen kısım)
+          Positioned(
+            top: statusBarHeight + 10,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Advice Yazısı Kapsülü
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      height: 50,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.black : Colors.white)
+                            .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(isDark ? 0.2 : 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.tips_and_updates_rounded,
+                            color: isDark
+                                ? Colors.amberAccent
+                                : Colors.blueAccent,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Advice",
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Refresh Butonu Kapsülü
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.black : Colors.white)
+                            .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(isDark ? 0.2 : 0.5),
+                        ),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.refresh_rounded,
+                          color: isDark ? Colors.white : Colors.black87,
+                          size: 24,
+                        ),
+                        onPressed: refreshData,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 3. ALT BAR
+          AdviceBottomBar(isDark: isDark),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: refreshData,
-        child: AdviceViewBody(
-          isLoading: isLoading,
-          errorMessage: errorMessage,
-          analyses: analyses,
-          isDark: isDark,
-        ),
       ),
     );
   }

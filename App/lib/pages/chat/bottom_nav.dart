@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-
 import 'package:mentra_app/pages/home/home_page.dart';
 import 'package:mentra_app/pages/mood/mood_graph_page.dart';
 import 'package:mentra_app/pages/profile/profile_page.dart';
-
 import 'dart:ui';
-
 import 'advice_page.dart';
 
 class ChatBottomNav extends StatelessWidget {
@@ -38,14 +35,17 @@ class ChatBottomNav extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
+                  // --- HOME BUTONU (İÇİ BOŞ YAPILDI) ---
                   IconButton(
                     icon: Icon(
-                      Icons.home,
+                      Icons
+                          .home_outlined, // Icons.home yerine Icons.home_outlined kullanıldı
                       color: isDark ? Colors.white : Colors.black87,
                     ),
-                    onPressed: () => Navigator.pushReplacement(
+                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
                       context,
-                      MaterialPageRoute(builder: (_) => const HomePage()),
+                      '/home',
+                      (route) => false,
                     ),
                   ),
                   IconButton(

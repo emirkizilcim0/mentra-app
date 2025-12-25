@@ -227,6 +227,15 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ],
           ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ProfileTopBar(
+              themeProvider: themeProvider,
+              onSave: () => ProfileSaveLogic.save(context, nameCtrl.text),
+            ),
+          ),
           const ProfileBottomNav(),
         ],
       ),

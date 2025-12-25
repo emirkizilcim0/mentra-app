@@ -15,6 +15,7 @@ import 'home_days_generator.dart';
 import 'home_view.dart';
 import 'home_logic_loader.dart';
 import 'loading_view.dart';
+import 'package:mentra_app/my_app.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -29,6 +30,8 @@ class _HomePageState extends State<HomePage> {
   String _singleQuote = "";
   bool _isLoading = true;
   DateTime _current = DateTime.now();
+  final DateTime _today = DateTime.now();
+
   int _slideDirection = 0;
 
   @override
@@ -96,20 +99,23 @@ class _HomePageState extends State<HomePage> {
     final m = _current.month;
     final y = _current.year;
     final next = DateTime(m == 12 ? y + 1 : y, m == 12 ? 1 : m + 1, 1);
-    final now = DateTime.now();
-    final isFuture =
-        next.year > now.year ||
-        (next.year == now.year && next.month > now.month);
-    if (isFuture) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Gelecek aya geçilemez.')));
+
+    // DEĞİŞİKLİK: isFuture kontrolünde _today kullanarak daha sağlam yaptık
+    if (next.year > _today.year ||
+        (next.year == _today.year && next.month > _today.month)) {
+      _showSnackBar('Gelecek aya geçilemez.');
       return;
     }
     setState(() {
       _current = next;
       _slideDirection = 1;
     });
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openYearPicker() async {
@@ -423,18 +429,33 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+
+    // Takvim çizimi için seçili ay verisi (_current)
     final dd = HomeDateData(_current, speeches.length);
 
-    // Stack kullanıyoruz ki LoadingView alttaki sayfanın üzerine binebilsin
-    // Böylece alttaki sayfa bulanık (blur) görünebilir.
+    // --- GELECEK AY KONTROLÜ MANTIĞI BURAYA EKLENDİ ---
+    final DateTime nextMonthDate = DateTime(
+      _current.month == 12 ? _current.year + 1 : _current.year,
+      _current.month == 12 ? 1 : _current.month + 1,
+      1,
+    );
+
+    // Eğer bir sonraki ay, bugünün ayından büyükse butonu gizlemek için false döner
+    final bool canGoNext =
+        !(nextMonthDate.year > _today.year ||
+            (nextMonthDate.year == _today.year &&
+                nextMonthDate.month > _today.month));
+    // ------------------------------------------------
+
     return Stack(
       children: [
-        // 1. KATMAN: ANA SAYFA (HomeView)
-        // Yükleme bitmese bile altta görünür, böylece LoadingView bulanıklaştırabilir.
         HomeView(
           isDark: isDark,
           dd: dd,
           randomSpeech: _singleQuote,
+          // HATA BURADAYDI: Yeni parametreyi buraya ekledik
+          showNextButton: canGoNext,
+
           dayWidgets: HomeDaysGenerator.generate(
             dd: dd,
             percents: _percents,
@@ -448,8 +469,6 @@ class _HomePageState extends State<HomePage> {
           slideDirection: _slideDirection,
         ),
 
-        // 2. KATMAN: LOADING EKRANI
-        // Eğer yükleniyorsa en üste yerleşir.
         if (_isLoading) Positioned.fill(child: LoadingView(isDark: isDark)),
       ],
     );

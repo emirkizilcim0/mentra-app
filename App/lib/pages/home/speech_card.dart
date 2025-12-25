@@ -15,62 +15,76 @@ class SpeechCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Ekran boyutunu alıyoruz
+    // Ekran boyutlarını alıyoruz
     final size = MediaQuery.of(context).size;
+    final double screenWidth = size.width;
 
-    // 2. Ekran genişliğine göre dinamik padding hesaplıyoruz
-    // Ekranın %5'i kadar yanlardan boşluk bırakır.
-    final double sidePadding = size.width * 0.05;
-
-    // İçerik için de ekranın boyutuna göre biraz esneklik tanıyoruz
-    // Küçük ekranlarda (örn: 350px altı) yazı boyutu bir tık küçülebilir
-    final double titleFontSize = size.width < 350 ? 16 : 18;
-    final double textFontSize = size.width < 350 ? 14 : 16;
+    // Dinamik font boyutları
+    final double titleFontSize = screenWidth < 360 ? 15 : 17;
+    final double textFontSize = screenWidth < 360 ? 13 : 15;
+    final double dateFontSize = screenWidth < 360 ? 10 : 11;
 
     return Center(
-      // Geniş ekranlarda (tablet) kartı ortalamak için
       child: ConstrainedBox(
-        // 3. Tablet/Masaüstü önlemi: Kart asla 600 pixelden geniş olmasın.
-        constraints: const BoxConstraints(maxWidth: 600),
+        constraints: const BoxConstraints(maxWidth: 550),
         child: Padding(
-          // Dış kenar boşlukları (Dinamik)
-          padding: EdgeInsets.symmetric(horizontal: sidePadding, vertical: 12),
+          // Ekran kenarlarından güvenli bir boşluk bırakıyoruz
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
           child: Container(
             width: double.infinity,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: isDark
-                    ? [const Color(0xFF2D1B69), const Color(0xFF1A103C)]
-                    : [const Color(0xFFFFF7F7), const Color(0xFFFDEDED)],
+                    ? [const Color(0xFF231454), const Color(0xFF140B30)]
+                    : [const Color(0xFFFFFFFF), const Color(0xFFF8F0FF)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.03),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: isDark ? Colors.black54 : Colors.black12,
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  color: isDark
+                      ? Colors.black45
+                      : Colors.black.withOpacity(0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
+            // Overflow hatasına neden olan IntrinsicHeight kaldırıldı.
+            // Column içindeki MainAxisSize.min zaten içeriğe göre boyutu ayarlayacaktır.
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 1. Üst Kısım: İkon ve Başlık
                 Padding(
-                  // Kartın içindeki ikon ve başlık kısmı
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.auto_fix_high,
-                        color: isDark ? Colors.white : Colors.black87,
-                        // İkon boyutu da çok küçük ekranlarda küçülsün
-                        size: size.width < 350 ? 20 : 24,
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.white10
+                              : Colors.deepPurple.withOpacity(0.05),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.auto_awesome,
+                          color: isDark
+                              ? const Color(0xFFA685FF)
+                              : Colors.deepPurpleAccent,
+                          size: screenWidth < 360 ? 18 : 22,
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      // Başlık taşarsa "..." koysun diye Flexible ekledik
-                      Flexible(
+                      const SizedBox(width: 10),
+                      Expanded(
                         child: Text(
                           "Daily Motivation",
                           style: GoogleFonts.poppins(
@@ -78,39 +92,44 @@ class SpeechCard extends StatelessWidget {
                             fontSize: titleFontSize,
                             color: isDark ? Colors.white : Colors.black87,
                           ),
-                          overflow: TextOverflow.ellipsis, // Sığmazsa üç nokta
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                // Sözün kendisi
+                // 2. Orta Kısım: Motivasyon Sözü
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 22),
                   child: Text(
                     speech,
+                    textAlign: TextAlign.left,
                     style: GoogleFonts.poppins(
                       fontSize: textFontSize,
-                      height:
-                          1.6, // Satır arası boşluk okunabilirlik için iyidir
-                      color: isDark ? Colors.white : Colors.black87,
+                      height: 1.5,
+                      color: isDark
+                          ? Colors.white.withOpacity(0.9)
+                          : Colors.black87.withOpacity(0.85),
                       fontStyle: FontStyle.italic,
+                      letterSpacing: 0.2,
                     ),
                   ),
                 ),
 
-                // Tarih kısmı (En altta sağda şık durur)
+                // 3. Alt Kısım: Tarih
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  padding: const EdgeInsets.fromLTRB(22, 12, 22, 20),
                   child: Align(
                     alignment: Alignment.centerRight,
                     child: Text(
                       dateStr,
                       style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w400,
-                        fontSize: 12, // Tarih biraz daha küçük ve zarif
-                        color: isDark ? Colors.white54 : Colors.black45,
+                        fontWeight: FontWeight.w500,
+                        fontSize: dateFontSize,
+                        letterSpacing: 0.5,
+                        color: isDark ? Colors.white38 : Colors.black38,
                       ),
                     ),
                   ),

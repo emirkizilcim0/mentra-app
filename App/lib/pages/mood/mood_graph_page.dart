@@ -1,4 +1,6 @@
 // pages/mood/mood_graph_page.dart
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:mentra_app/pages/mood/mood_bar_chart.dart';
 import 'package:mentra_app/pages/mood/mood_graph_bottom_nav.dart';
@@ -68,57 +70,20 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
+    final double statusBarHeight = MediaQuery.of(context).padding.top;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Mood Tracker',
-          style: TextStyle(
-            color: MoodGraphStyles.getTextColor(isDark),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        elevation: 0,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
-        actions: [
-          // Data info badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: _hasRealData
-                  ? Colors.green.withOpacity(0.2)
-                  : Colors.orange.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _hasRealData ? Colors.green : Colors.orange,
-                width: 1,
-              ),
-            ),
-            child: Text(
-              '${_dataCount} data',
-              style: TextStyle(
-                fontSize: 12,
-                color: _hasRealData ? Colors.green : Colors.orange,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _load,
-            tooltip: 'Refresh data',
-          ),
-        ],
-      ),
+      // AppBar tamamen kaldırıldı, body içinde Stack ile yönetiliyor
       body: Stack(
         children: [
+          // 1. ANA İÇERİK
           Container(
             decoration: BoxDecoration(
               gradient: MoodGraphStyles.getBackground(isDark),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+              // Üstten 110 padding vererek içeriğin yüzen barın altında kalmamasını sağladık
+              padding: const EdgeInsets.fromLTRB(16, 110, 16, 90),
               child: FutureBuilder<List<MoodData>>(
                 future: _future,
                 builder: (context, snapshot) {
@@ -153,17 +118,6 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                               fontSize: 16,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            snapshot.error.toString(),
-                            style: TextStyle(
-                              color: MoodGraphStyles.getTextColor(
-                                isDark,
-                              ).withOpacity(0.7),
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
                           const SizedBox(height: 16),
                           ElevatedButton(
                             onPressed: _load,
@@ -197,26 +151,9 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
-                            child: Text(
-                              'Analyze your diaries to see mood trends and insights',
-                              style: TextStyle(
-                                color: MoodGraphStyles.getTextColor(
-                                  isDark,
-                                ).withOpacity(0.6),
-                                fontSize: 14,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
                           const SizedBox(height: 24),
                           ElevatedButton(
-                            onPressed: () {
-                              // Navigate to diary or analysis page
-                              Navigator.pop(context);
-                            },
+                            onPressed: () => Navigator.pop(context),
                             child: const Text('Go to Diaries'),
                           ),
                         ],
@@ -239,8 +176,6 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                             },
                           ),
                         ),
-
-                        // Info banner if using sample data
                         if (!_hasRealData && data.isNotEmpty)
                           Container(
                             margin: const EdgeInsets.symmetric(vertical: 16),
@@ -254,7 +189,10 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.info_outline, color: Colors.orange),
+                                const Icon(
+                                  Icons.info_outline,
+                                  color: Colors.orange,
+                                ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
@@ -270,7 +208,6 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                               ],
                             ),
                           ),
-
                         const SizedBox(height: 16),
                         MoodLineChart(
                           data: data,
@@ -290,15 +227,6 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
                             fontSize: 12,
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Write more diaries for better insights',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: isDark ? Colors.white60 : Colors.black45,
-                            fontSize: 11,
-                          ),
-                        ),
                       ],
                     ),
                   );
@@ -306,6 +234,116 @@ class _MoodGraphPageState extends State<MoodGraphPage> {
               ),
             ),
           ),
+
+          // 2. ÜST YÜZEN TOP BAR (Yeni Tasarım)
+          Positioned(
+            top: statusBarHeight + 10,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Başlık Kapsülü
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      height: 50,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.black : Colors.white)
+                            .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(isDark ? 0.2 : 0.5),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.insights_rounded,
+                            color: isDark ? Colors.purpleAccent : Colors.purple,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Mood Tracker",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Data Count Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _hasRealData
+                                  ? Colors.green.withOpacity(0.2)
+                                  : Colors.orange.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _hasRealData
+                                    ? Colors.green
+                                    : Colors.orange,
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              '$_dataCount',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: _hasRealData
+                                    ? Colors.green
+                                    : Colors.orange,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Refresh Butonu Kapsülü
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.black : Colors.white)
+                            .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(isDark ? 0.2 : 0.5),
+                        ),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.refresh_rounded,
+                          color: isDark ? Colors.white : Colors.black87,
+                          size: 24,
+                        ),
+                        onPressed: _load,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 3. ALT BAR
           const MoodGraphBottomNav(),
         ],
       ),

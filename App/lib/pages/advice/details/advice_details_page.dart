@@ -220,11 +220,6 @@ class AdviceDetailPage extends StatelessWidget {
         analysisItem['analysis_data']?['sign'] ??
         'Not specified';
 
-    final birthMap =
-        analysisItem['birth_map'] ??
-        analysisItem['analysis_data']?['birth_map'] ??
-        'Not specified';
-
     return Scaffold(
       backgroundColor: AdviceColors.bg(isDark),
       appBar: AppBar(
@@ -333,7 +328,6 @@ class AdviceDetailPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   _buildDetailRow('Character Type', characterType, isDark),
                   _buildDetailRow('Zodiac Sign', sign, isDark),
-                  _buildDetailRow('Birth Map', birthMap, isDark),
                   _buildDetailRow(
                     'Analysis Type',
                     analysisItem['analysis_type'] ?? 'Diary Analysis',

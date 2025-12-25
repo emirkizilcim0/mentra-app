@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'home_date_data.dart';
 import 'calendar_day_cell.dart';
-// import 'color_utils.dart'; // Artık eski renk mantığına ihtiyacımız kalmadı
 
 class HomeDaysGenerator {
   static List<Widget> generate({
@@ -13,62 +12,54 @@ class HomeDaysGenerator {
     required bool isDark,
     required Function(int, int, int) onDayTap,
   }) {
+    // Gerçek zamanı bir kez alıyoruz
+    final DateTime now = DateTime.now();
+
     return List.generate(dd.blankSpaces + dd.lastDayOfMonth, (i) {
-      // Boşlukları atla
       if (i < dd.blankSpaces) return const SizedBox(width: 38, height: 38);
 
       final day = i + 1 - dd.blankSpaces;
 
+      // --- DÜZELTME 1: Ay Indeksi ---
+      // DateTime ay bilgisini 1'den başlatır.
+      // dd.monthIndex 0 ise (Ocak), DateTime içine 1 göndermeliyiz.
+      final int currentMonthForDateTime = dd.monthIndex + 1;
+
       // O günün "yyyy-MM-dd" formatındaki key'ini oluştur
       final key = DateFormat(
         'yyyy-MM-dd',
-      ).format(DateTime(dd.year, dd.monthIndex + 1, day));
+      ).format(DateTime(dd.year, currentMonthForDateTime, day));
 
-      // Kontroller
-      final bool isToday = (day == dd.now.day);
-      final bool hasEntry = days[key] != null; // O güne ait yazı var mı?
+      // --- DÜZELTME 2: isToday Kontrolü ---
+      // dd.monthIndex (0-11) olduğu için now.month (1-12) ile karşılaştırırken 1 ekliyoruz.
+      bool isToday =
+          day == now.day &&
+          currentMonthForDateTime == now.month &&
+          dd.year == now.year;
 
-      // --- YENİ RENK MANTIĞI ---
+      final bool hasEntry = days[key] != null;
+
+      // --- RENK MANTIĞI ---
       Color? boxColor;
-
       if (hasEntry) {
         if (isToday) {
-          // BUGÜN + YAZI VAR -> Koyu Mor (Vurgulu)
           boxColor = isDark
-              ? const Color.fromARGB(
-                  129,
-                  123,
-                  31,
-                  162,
-                ) // Dark Mode: Canlı Koyu Mor
-              : const Color.fromARGB(
-                  255,
-                  105,
-                  75,
-                  142,
-                ); // Light Mode: En Koyu Mor
+              ? const Color.fromARGB(129, 123, 31, 162)
+              : const Color.fromARGB(255, 105, 75, 142);
         } else {
-          // SADECE YAZI VAR -> Açık/Normal Mor
           boxColor = isDark
-              ? const Color(0xFF4A148C).withOpacity(
-                  0.5,
-                ) // Dark Mode: Transparan Koyu
-              : const Color(
-                  0xFFE1BEE7,
-                ); // Light Mode: Tatlı Açık Mor (Lavender)
+              ? const Color(0xFF4A148C).withOpacity(0.5)
+              : const Color(0xFFE1BEE7);
         }
-      } else {
-        // Yazı yoksa renk yok (CalendarDayCell kendi varsayılanını kullanır)
-        boxColor = null;
       }
-      // -------------------------
 
       return CalendarDayCell(
         day: day,
         isToday: isToday,
         isDark: isDark,
-        // Eski fillForPercent yerine hesapladığımız 'boxColor'ı veriyoruz
         fillColor: boxColor,
+        // onDayTap gönderirken dd.monthIndex'i orijinal haliyle bırakıyoruz
+        // çünkü HomePage içindeki mantığın 0-11 beklediğini varsayıyoruz.
         onTap: hasEntry ? () => onDayTap(day, dd.monthIndex, dd.year) : null,
       );
     });

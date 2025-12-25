@@ -19,10 +19,14 @@ class EmailLoginAction {
     if (!context.mounted) return;
 
     if (user != null) {
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Login failed. Check credentials.")),
+      // ESKİ: Navigator.pushReplacementNamed(context, '/home');
+
+      // YENİ: Tüm geçmişi siler ve Home'u ana sayfa yapar
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/home',
+        (route) =>
+            false, // Bu fonksiyon false döndüğü sürece arkadaki her şeyi siler
       );
     }
   }

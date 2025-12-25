@@ -1,6 +1,5 @@
 // lib/pages/home/home_view.dart
 import 'package:flutter/material.dart';
-// motivational_speeches importuna artık burada ihtiyacın kalmadı ama durabilir
 import 'top_bar.dart';
 import 'calendar_card.dart';
 import 'speech_card.dart';
@@ -11,18 +10,20 @@ class HomeView extends StatelessWidget {
   final bool isDark;
   final HomeDateData dd;
   final List<Widget> dayWidgets;
-  final String randomSpeech; // <--- 1. BU DEĞİŞKENİ EKLE
+  final String randomSpeech;
   final VoidCallback? onPrevMonth;
   final VoidCallback? onNextMonth;
   final VoidCallback? onYearTap;
   final int slideDirection;
+  final bool showNextButton; // <--- GELECEK AY KONTROLÜ İÇİN EKLENDİ
 
   const HomeView({
     super.key,
     required this.isDark,
     required this.dd,
     required this.dayWidgets,
-    required this.randomSpeech, // <--- 2. CONSTRUCTOR'A EKLE
+    required this.randomSpeech,
+    required this.showNextButton, // <--- CONSTRUCTOR'A EKLENDİ
     this.onPrevMonth,
     this.onNextMonth,
     this.onYearTap,
@@ -83,15 +84,15 @@ class HomeView extends StatelessWidget {
                             onPrevMonth: onPrevMonth ?? () {},
                             onNextMonth: onNextMonth ?? () {},
                             onYearTap: onYearTap ?? () {},
+                            showNextButton:
+                                showNextButton, // <--- CARD'A İLETİLDİ
                           ),
                         ),
                       ),
-                      // 3. BURADAKİ DEĞİŞİKLİĞE DİKKAT
                       SpeechCard(
-                        speech:
-                            randomSpeech, // Artık listeden değil, gelen tek sözü kullanıyoruz
+                        speech: randomSpeech,
                         isDark: isDark,
-                        dateStr: "${dd.month} ${dd.now.day}, ${dd.year}",
+                        dateStr: _getRealTodayString(),
                       ),
                     ],
                   ),
@@ -103,5 +104,24 @@ class HomeView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _getRealTodayString() {
+    final now = DateTime.now();
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return "${months[now.month - 1]} ${now.day}, ${now.year}";
   }
 }

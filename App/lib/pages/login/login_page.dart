@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mentra_app/pages/login/login_button.dart';
 import 'package:mentra_app/pages/login/login_field.dart';
 import 'package:mentra_app/pages/login/login_header.dart';
@@ -22,54 +23,62 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: LoginStyles.gradientBackground,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 100),
-          child: Column(
-            children: [
-              const LoginHeader(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 32,
-                ),
-                decoration: LoginStyles.cardDecoration,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    LoginField(
-                      label: "EMAIL",
-                      hint: "steveaustin@gmail.com",
-                      controller: _emailCtrl,
-                    ),
-                    LoginField(
-                      label: "PASSWORD",
-                      hint: "******",
-                      controller: _passCtrl,
-                      isPassword: true,
-                    ),
-                    const SizedBox(height: 10),
-                    LoginButtons(
-                      isLoading: _isLoading,
-                      onLogin: () => _logic.login(
-                        context,
-                        _emailCtrl.text.trim(),
-                        _passCtrl.text.trim(),
-                        _setLoading,
+    return PopScope(
+      canPop: false, // Geri gitme işlemini tamamen devre dışı bırakır
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // Kullanıcı geri tuşuna bastığında uygulamayı işletim sistemi seviyesinde kapatır
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: LoginStyles.gradientBackground,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 100),
+            child: Column(
+              children: [
+                const LoginHeader(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 32,
+                  ),
+                  decoration: LoginStyles.cardDecoration,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LoginField(
+                        label: "EMAIL",
+                        hint: "steveaustin@gmail.com",
+                        controller: _emailCtrl,
                       ),
-                      onGoogleLogin: () =>
-                          _logic.googleLogin(context, _setLoading),
-                    ),
-                    const SizedBox(height: 20),
-                    const LoginLinks(),
-                  ],
+                      LoginField(
+                        label: "PASSWORD",
+                        hint: "******",
+                        controller: _passCtrl,
+                        isPassword: true,
+                      ),
+                      const SizedBox(height: 10),
+                      LoginButtons(
+                        isLoading: _isLoading,
+                        onLogin: () => _logic.login(
+                          context,
+                          _emailCtrl.text.trim(),
+                          _passCtrl.text.trim(),
+                          _setLoading,
+                        ),
+                        onGoogleLogin: () =>
+                            _logic.googleLogin(context, _setLoading),
+                      ),
+                      const SizedBox(height: 20),
+                      const LoginLinks(),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

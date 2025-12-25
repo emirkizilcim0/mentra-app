@@ -6,12 +6,14 @@ class DiaryContentCard extends StatelessWidget {
   final String date;
   final String title;
   final String content;
+  final bool isDark;
 
   const DiaryContentCard({
     super.key,
     required this.date,
     required this.title,
     required this.content,
+    required this.isDark,
   });
 
   @override
@@ -19,7 +21,8 @@ class DiaryContentCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: DiaryStyles.cardDecoration,
+      // HATA BURADAYDI: Fonksiyonu çağırıyoruz ve isDark parametresini gönderiyoruz
+      decoration: DiaryStyles.getCardDecoration(isDark),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -27,7 +30,8 @@ class DiaryContentCard extends StatelessWidget {
             date,
             style: GoogleFonts.poppins(
               fontSize: 13,
-              color: Colors.grey[700],
+              // Tarih rengi: Koyu modda daha açık gri, açık modda daha koyu gri
+              color: isDark ? Colors.grey[400] : Colors.grey[700],
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -37,7 +41,8 @@ class DiaryContentCard extends StatelessWidget {
             style: GoogleFonts.poppins(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              // Başlık rengi: Koyu modda beyaz, açık modda siyahımsı
+              color: isDark ? Colors.white : Colors.black87,
             ),
           ),
           const SizedBox(height: 14),
@@ -45,7 +50,8 @@ class DiaryContentCard extends StatelessWidget {
             content,
             style: GoogleFonts.lato(
               fontSize: 16,
-              color: Colors.black87,
+              // İçerik rengi: Koyu modda beyazımsı, açık modda siyahımsı
+              color: isDark ? Colors.white70 : Colors.black87,
               height: 1.6,
             ),
           ),

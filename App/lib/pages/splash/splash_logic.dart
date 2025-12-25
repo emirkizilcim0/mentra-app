@@ -10,16 +10,18 @@ class SplashLogic {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user != null) {
-      // Kullanıcı zaten giriş yapmışsa -> Ana Sayfa
-      Navigator.pushReplacement(
+      // HomePage'e giderken arkadaki her şeyi (Splash dahil) SİL
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const HomePage()),
+        (route) => false,
       );
     } else {
-      // Giriş yapmamışsa -> Login Sayfası
-      Navigator.pushReplacement(
+      // LoginPage'e giderken arkadaki her şeyi (Splash dahil) SİL
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
       );
     }
   }
