@@ -142,50 +142,6 @@ class SaveAnalysisRequest(BaseModel):
     has_advice: bool = True
     seen: bool = False
 
-# ============== HELPER FUNCTIONS ==============
-
-def detect_mood_from_content(content: str, ai_mood: str = None) -> tuple[str, str]:
-    """Detect mood from content with rule-based overrides."""
-    content_lower = content.lower()
-    
-    angry_keywords = ["angry", "mad", "furious", "rage", "irritated", "annoyed", 
-                     "upset", "hate", "frustrated", "cant stand", "pissed",
-                     "sinir", "kızgın", "öfke", "sinirliyim", "kızgınım"]
-    sad_keywords = ["sad", "depressed", "unhappy", "down", "miserable", "hopeless",
-                   "üzgün", "mutsuz", "depresif", "hüzünlü"]
-    anxious_keywords = ["anxious", "anxiety", "worried", "nervous", "stressed", "tense",
-                       "endişeli", "kaygılı", "stresli", "gergin"]
-    happy_keywords = ["happy", "joy", "excited", "great", "wonderful", "positive",
-                     "mutlu", "neşeli", "heyecanlı", "harika"]
-    calm_keywords = ["calm", "peaceful", "relaxed", "serene", "tranquil",
-                    "sakin", "huzurlu", "rahat"]
-    
-    # Check rules in priority order
-    for keyword in angry_keywords:
-        if keyword in content_lower:
-            return "Angry", "content_override"
-    
-    for keyword in sad_keywords:
-        if keyword in content_lower:
-            return "Sad", "content_override"
-    
-    for keyword in anxious_keywords:
-        if keyword in content_lower:
-            return "Anxious", "content_override"
-    
-    for keyword in happy_keywords:
-        if keyword in content_lower:
-            return "Happy", "content_override"
-    
-    for keyword in calm_keywords:
-        if keyword in content_lower:
-            return "Calm", "content_override"
-    
-    if ai_mood and ai_mood != "Neutral":
-        return ai_mood, "ai_detected"
-    
-    return "Neutral", "default"
-
 def create_analysis_key(user_id: str, diary_id=0) -> str:
     """Create a guaranteed unique analysis key"""
     unique_id = uuid.uuid4().hex
@@ -382,8 +338,9 @@ async def analyze_diaries(request: DiaryAnalysisRequest, user_id: str):
                     "analysis_date": datetime.utcnow().isoformat()
                 }
                 
-                ai_mood = result.get("mood", "Neutral")
-                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
+                final_mood = result.get("mood") or "Neutral"
+                mood_source = "ai_detected"
+
                 
                 # Create analysis key
                 analysis_key = create_analysis_key(user_id, diary_record["id"] if source != "request_content" else 0)
@@ -423,7 +380,8 @@ async def analyze_diaries(request: DiaryAnalysisRequest, user_id: str):
             advice_text = analysis_result.get("advice", "")
             
             for idx, diary_record in enumerate(diary_records):
-                final_mood, mood_source = detect_mood_from_content(diary_record["content"], ai_mood)
+                final_mood = analysis_result.get("mood") or "Neutral"
+                mood_source = "ai_detected"
                 
                 analysis_key = create_analysis_key(user_id, diary_record["id"] if source != "request_content" else 0)
                 
