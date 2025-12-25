@@ -128,9 +128,9 @@ class _DiaryWritePageState extends State<DiaryWritePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const WriteHeader(),
-                  TitleInput(controller: _titleCtrl),
+                  TitleInput(controller: _titleCtrl, isDark: isDark),
                   Divider(color: isDark ? Colors.white24 : Colors.grey[300]),
-                  ContentInput(controller: _contentCtrl),
+                  ContentInput(controller: _contentCtrl, isDark: isDark),
                 ],
               ),
             ),

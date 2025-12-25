@@ -3,16 +3,27 @@ import 'write_styles.dart';
 
 class TitleInput extends StatelessWidget {
   final TextEditingController controller;
-  const TitleInput({super.key, required this.controller});
+  final bool isDark; // 1. Tema parametresi eklendi
+
+  const TitleInput({
+    super.key,
+    required this.controller,
+    required this.isDark, // 2. Zorunlu hale getirildi
+  });
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
-      style: WriteStyles.titleStyle,
+      // 3. Mevcut stili temaya göre renklendiriyoruz
+      style: WriteStyles.titleStyle.copyWith(
+        color: isDark ? Colors.white : Colors.black87,
+      ),
       decoration: InputDecoration(
         hintText: 'Title',
-        hintStyle: WriteStyles.hintStyle,
+        hintStyle: WriteStyles.hintStyle.copyWith(
+          color: isDark ? Colors.white54 : Colors.black38,
+        ),
         border: InputBorder.none,
       ),
       validator: (v) =>
@@ -23,18 +34,29 @@ class TitleInput extends StatelessWidget {
 
 class ContentInput extends StatelessWidget {
   final TextEditingController controller;
-  const ContentInput({super.key, required this.controller});
+  final bool isDark; // 1. Tema parametresi eklendi
+
+  const ContentInput({
+    super.key,
+    required this.controller,
+    required this.isDark, // 2. Zorunlu hale getirildi
+  });
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
-      style: WriteStyles.contentStyle,
+      // 3. Mevcut stili temaya göre renklendiriyoruz
+      style: WriteStyles.contentStyle.copyWith(
+        color: isDark ? Colors.white : Colors.black87,
+      ),
       maxLines: null,
       minLines: 10,
       decoration: InputDecoration(
         hintText: 'How was your day?',
-        hintStyle: WriteStyles.hintStyle,
+        hintStyle: WriteStyles.hintStyle.copyWith(
+          color: isDark ? Colors.white54 : Colors.black38,
+        ),
         border: InputBorder.none,
       ),
       validator: (v) =>
