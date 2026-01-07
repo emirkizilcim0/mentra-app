@@ -14,16 +14,26 @@ class AnswerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // MBTI Testinde 5'li likert ölçeği değerleri:
+    // Index 0: -2 (Strongly Disagree)
+    // Index 1: -1 (Disagree)
+    // Index 2:  0 (Neutral)
+    // Index 3:  1 (Agree)
+    // Index 4:  2 (Strongly Agree)
+    final List<int> mbtiValues = [-2, -1, 0, 1, 2];
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: List.generate(5, (index) {
-        final int value = index + 1;
+        // Artik value 1,2,3,4,5 degil; -2,-1,0,1,2 gidiyor
+        final int actualValue = mbtiValues[index];
+
         return AnswerCircle(
-          value: value,
-          isSelected: selectedAnswer == value,
+          value: actualValue,
+          isSelected: selectedAnswer == actualValue,
           size: AnswerData.getSize(index),
           baseColor: AnswerData.getColor(index),
-          onTap: () => onSelect(value),
+          onTap: () => onSelect(actualValue), // Gercek MBTI puanini gonder
         );
       }),
     );

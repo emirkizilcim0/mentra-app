@@ -5,14 +5,12 @@ import 'package:mentra_app/mbti/result_screen.dart';
 import 'package:mentra_app/mbti/services/mbti_calculator.dart';
 import 'package:provider/provider.dart';
 import 'package:mentra_app/providers/theme_provider.dart';
-
-// --- İMPORTLARI KONTROL ET ---
-import 'package:mentra_app/mbti/data/questions_data.dart'; // Senin attığın veri dosyası
-
+import 'package:mentra_app/mbti/data/questions_data.dart';
 import 'test_view_body.dart';
 
 class MbtiTestPage extends StatefulWidget {
   const MbtiTestPage({super.key});
+
   @override
   State<MbtiTestPage> createState() => _MbtiTestPageState();
 }
@@ -25,8 +23,13 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
   // Hesaplayıcıyı başlat
   final MbtiCalculator _calculator = MbtiCalculator();
 
+  @override
+  void initState() {
+    super.initState();
+    _calculator.reset(); // Sayfa her açıldığında skorları temizle
+  }
+
   void _next() async {
-    // 1. Cevap kontrolü
     if (_answer == null) {
       ScaffoldMessenger.of(
         context,
@@ -34,16 +37,11 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
       return;
     }
 
-    // 2. PUANLAMA (KRİTİK KISIM)
-    // Senin veri dosyandaki "score_type" alanını (E, S, T, J) alıyoruz.
-    // Question modelinde bu alanın adı 'scoreType' olarak tanımlanmış olmalı.
-    // Eğer hata alırsan modelindeki isme bak (örn: .score_type veya .dimension)
+    // Puanı ekle
     String typeToScore = mbtiQuestions[_idx].scoreType;
-
     _calculator.addScore(typeToScore, _answer!);
 
-    // 3. İLERLEME VEYA BİTİRME
-    if (_idx < _total - 1) {
+    if (_idx < mbtiQuestions.length - 1) {
       setState(() {
         _idx++;
         _answer = null;
@@ -55,17 +53,18 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
 
   Future<void> _finishTestAndSave() async {
     try {
+      // 1. Loading diyaloğunu aç
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (c) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Sonucu hesapla
+      // 2. Sonuçları hesapla
       String finalResult = _calculator.calculateResult();
       var details = _calculator.getPersonalityResult();
 
-      // Firebase'e kaydet
+      // 3. Firebase kaydı
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -77,20 +76,30 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
         }, SetOptions(merge: true));
       }
 
-      if (mounted) Navigator.pop(context); // Yükleniyor'u kapat
-
-      // Sonuç ekranına git
+      // 4. Loading diyaloğunu kapat (Güvenli yöntem)
       if (mounted) {
-        Navigator.pushReplacement(
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // 5. Sonuç ekranına git ve geçmişi temizle
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (context) => ResultScreen(mbtiResult: finalResult),
           ),
+          (route) => false, // Geri tuşuyla teste dönülmesini engeller
         );
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context);
-      print("Kayıt Hatası: $e");
+      // Hata durumunda diyaloğu kapat ve kullanıcıyı bilgilendir
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        print("🔥 Kayıt Hatası: $e");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("An error occurred: $e")));
+      }
     }
   }
 
@@ -98,19 +107,18 @@ class _MbtiTestPageState extends State<MbtiTestPage> {
   Widget build(BuildContext context) {
     final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
 
-    // Veri listesi boş mu kontrolü
-    final String qText =
-        (mbtiQuestions.isNotEmpty && _idx < mbtiQuestions.length)
-        ? mbtiQuestions[_idx]
-              .question // Map değil, Nesne erişimi (.question)
-        : "Loading...";
+    if (mbtiQuestions.isEmpty) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final String qText = mbtiQuestions[_idx].question;
 
     return Scaffold(
       body: TestViewBody(
         isDark: isDark,
         question: qText,
         index: _idx,
-        total: _total,
+        total: mbtiQuestions.length,
         selectedAnswer: _answer,
         onAnswer: (val) => setState(() => _answer = val),
         onNext: _next,
