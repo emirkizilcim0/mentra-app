@@ -1,6 +1,8 @@
 # Mentra – AI-Powered Mental Health & Diary Application
 
 
+![Logo](/App/assets/logo.png)
+
 Mentra is a modern **mental health journaling application** that helps users understand their emotional well-being through **daily diary entries, mood tracking, and AI-powered psychological insights**.  
 By combining mobile technologies, cloud-based backend services, and large language models (LLMs), Mentra provides a **safe, private, and intelligent space for self-reflection and emotional growth**.
 
